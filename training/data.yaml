@@ -1,0 +1,13 @@
+# Mẫu file khai báo bộ dữ liệu YOLO. Đặt file này trong thư mục dataset/ (cùng cấp với images/, labels/).
+# Đường dẫn train/val tính từ thư mục chứa file này.
+#
+# KHÔNG thêm dòng "path: ." : Ultralytics sẽ hiểu dấu chấm là thư mục đang chạy lệnh (vd /content
+# trên Colab) chứ không phải thư mục chứa file này, và sẽ báo không tìm thấy ảnh.
+train: images/train
+val: images/val
+
+# Tên các loại vật, đánh số từ 0. Thứ tự PHẢI khớp với số class trong các file nhãn .txt.
+# Đặt tên tiếng Việt không dấu hoặc có dấu đều được; tên này sẽ hiện trên giao diện.
+names:
+  0: oc_vit
+  1: dai_oc

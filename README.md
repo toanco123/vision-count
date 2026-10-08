@@ -1,11 +1,23 @@
-# vision-count: AI đếm vật thể trong ảnh
+# vision-count: AI đếm vật thể trong ảnh và video
 
-Tải một ảnh lên, hệ thống sẽ **phát hiện**, **khoanh khung** từng vật thể và **đếm số lượng** theo từng loại.
+Tải ảnh hoặc video lên, hệ thống sẽ **phát hiện**, **khoanh khung** từng vật thể và **đếm số lượng** theo từng loại.
 
-- Model: **YOLO11 nano** (`yolo11n.pt`) qua thư viện [Ultralytics]: nhỏ (~5MB), chạy được trên CPU, không cần GPU.
-- Nhận được **80 loại vật thông dụng** của bộ dữ liệu COCO: người, xe đạp, ô tô, xe máy, xe buýt, chó, mèo, chai, cốc, ghế, điện thoại, laptop, trái cây...
-- Giao diện: **Gradio**, mở bằng trình duyệt trên máy bạn.
-- Mọi thứ chạy **offline trên máy bạn**, không dùng dịch vụ trả phí hay API bên ngoài. Chỉ cần mạng **một lần** để cài thư viện và tải file model.
+- **Model:** YOLO11 qua thư viện [Ultralytics]:
+  - **nano** (`yolo11n.pt`, ~5MB): mặc định, chạy được trên CPU, không cần GPU;
+  - **small** (~19MB): chính xác hơn;
+  - hoặc model bạn tự train.
+- **Loại vật:** nhận được **80 loại vật thông dụng** của bộ dữ liệu COCO (người, xe đạp, ô tô, xe máy, xe buýt, chó, mèo, chai, cốc, ghế, điện thoại, laptop, trái cây...), tên hiển thị bằng tiếng Việt.
+- **Chức năng:**
+  - đếm một ảnh, hoặc chụp từ camera;
+  - chỉ đếm trong một vùng;
+  - chế độ vật nhỏ cho ảnh lớn;
+  - đếm nhiều ảnh cùng lúc;
+  - đếm video có tracking (không đếm trùng);
+  - lịch sử đếm;
+  - tải kết quả về (ảnh + CSV).
+- **Giao diện:** Gradio, mở bằng trình duyệt. Có thêm **API FastAPI** để app khác (web, điện thoại) gọi vào.
+- **Chạy offline** trên máy bạn, không dùng dịch vụ trả phí hay API bên ngoài. Chỉ cần mạng **một lần** để cài thư viện và tải file model.
+- **Fine-tune:** có sẵn bộ công cụ trong `training/` để dạy model nhận ra vật thể riêng của bạn.
 
 [Ultralytics]: https://docs.ultralytics.com
 
@@ -36,6 +48,7 @@ vision-count/
 │   ├── gradio_app.py       # Bố cục giao diện Gradio (3 tab) và nối sự kiện
 │   └── handlers.py         # Hàm xử lý khi bấm nút, chỉ gọi tới vision_count
 ├── tests/                  # Test tự động (pytest)
+├── training/               # Bộ công cụ fine-tune: hướng dẫn, data.yaml mẫu, notebook Colab
 ├── documents/              # Kế hoạch triển khai các tính năng
 ├── models/                 # Nơi lưu file model (tự tải về lần đầu)
 ├── data/                   # Lịch sử đếm (tạo khi chạy, không đưa lên git)
@@ -362,42 +375,22 @@ Khi gửi sai (file không phải ảnh, model/loại không có, vùng sai đ�
 
 ---
 
-## 8. Kế hoạch giai đoạn sau
+## 8. Fine-tune cho vật thể riêng
 
-### 8.1. Fine-tune khi model không nhận ra vật thể của bạn
+Model có sẵn chỉ biết 80 loại COCO. Muốn đếm vật riêng (ốc vít, viên thuốc, cá giống, bao hàng...), xem hướng dẫn từng bước trong **[training/README.md](training/README.md)**:
 
-Model pretrained chỉ biết 80 loại COCO. Với vật thể riêng (ốc vít, viên thuốc, cá giống, bao hàng...), cần dạy thêm cho model:
+1. Thu thập ảnh (khoảng 100-300 ảnh mỗi loại) và gán nhãn (Label Studio, CVAT hoặc Roboflow), xuất định dạng YOLO.
+2. Xếp thư mục theo mẫu, sửa `training/data.yaml` cho đúng tên các loại.
+3. Kiểm tra dữ liệu: `python training/check_dataset.py duong_dan/dataset`.
+4. Train miễn phí trên Google Colab bằng notebook `training/train_colab.ipynb`.
+5. Chép `best.pt` vào `models/`, thêm một dòng vào `AVAILABLE_MODELS` trong `vision_count/config.py`, rồi chọn model mới trên giao diện. Ô lọc loại vật tự đổi theo model.
 
-1. **Thu thập ảnh**: khoảng 100-300 ảnh cho mỗi loại để bắt đầu. Chụp ở nhiều góc, nhiều điều kiện ánh sáng, nhiều nền, có cả cảnh vật nằm sát hoặc chồng lên nhau, giống với lúc dùng thật.
-2. **Gán nhãn** (vẽ khung quanh từng vật) bằng công cụ miễn phí:
-   - [Label Studio](https://labelstud.io) hoặc [CVAT](https://www.cvat.ai): chạy được trên máy bạn.
-   - [Roboflow](https://roboflow.com): bản miễn phí, dùng trên web, tiện xuất dữ liệu.
-   - Xuất dữ liệu theo **định dạng YOLO**: mỗi ảnh đi kèm một file `.txt` chứa tọa độ khung, cùng một file `data.yaml` khai báo tên các loại.
-3. **Chia dữ liệu**: khoảng 80% để train, 20% để kiểm tra (val).
-4. **Train trên Google Colab** (miễn phí, có GPU): `Runtime → Change runtime type → T4 GPU`, rồi chạy:
-   ```python
-   !pip install ultralytics
-   from ultralytics import YOLO
-   model = YOLO("yolo11n.pt")      # bắt đầu từ model pretrained (transfer learning)
-   model.train(data="data.yaml", epochs=100, imgsz=640)
-   ```
-5. **Đánh giá**: xem chỉ số mAP và các ảnh kết quả trong thư mục `runs/detect/train/`.
-6. **Dùng model mới**: tải file `runs/detect/train/weights/best.pt` về, đặt vào `models/`, rồi thêm một dòng vào `AVAILABLE_MODELS` trong `vision_count/config.py`, ví dụ `"cua_toi": ("Model của tôi", "best.pt"),`. Model mới sẽ hiện trong ô **Model** trên giao diện. **Không phải sửa thêm dòng code nào khác.**
+---
 
-### 8.2. Đếm trong video, có tracking để không đếm trùng
+## 9. Hướng phát triển tiếp
 
-- Trong video, cùng một vật xuất hiện ở nhiều khung hình. Nếu đếm từng khung hình rồi cộng lại thì sẽ bị trùng.
-- Giải pháp là **tracking**: gán cho mỗi vật một ID cố định qua các khung hình. Ultralytics có sẵn `model.track(source="video.mp4", persist=True, tracker="bytetrack.yaml")`.
-- Hai cách đếm:
-  - **Đếm số ID duy nhất**: tổng số vật đã xuất hiện trong video.
-  - **Đếm khi vật đi qua một vạch/vùng**: phù hợp đếm xe qua cổng, người vào cửa. Ultralytics có sẵn `solutions.ObjectCounter`.
-- Dự kiến thêm `vision_count/video.py` với hàm `count_video(path) -> VideoCountResult`, và thêm một tab "Video" trong Gradio.
+Những việc chưa làm, có thể làm sau:
 
-### 8.3. Bọc thành API bằng FastAPI
-
-- Thêm thư mục `api/` với file `api/main.py`, dùng lại nguyên `ObjectDetector`:
-  - `POST /detect`: nhận file ảnh (multipart) cùng các tham số `confidence`, `classes`; trả về `result.to_dict()` dạng JSON.
-  - `POST /detect/image`: trả về ảnh đã khoanh khung.
-  - `GET /classes`: trả về danh sách loại vật model nhận được.
-- Nạp model **một lần** lúc khởi động server (không nạp lại mỗi request).
-- Chạy bằng `uvicorn api.main:app`. Sau đó app React hoặc Flutter gọi các API này để hiển thị.
+- **Đếm vật đi qua một vạch** trong video (xe qua cổng, người vào cửa). Ultralytics có sẵn `solutions.ObjectCounter`.
+- **Đếm trực tiếp từ webcam hoặc camera IP** theo thời gian thực. Cần cài thêm ffmpeg nếu quay video qua giao diện.
+- **App giao diện khác** (web React, app điện thoại Flutter) gọi vào API ở mục 6.
