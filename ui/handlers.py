@@ -54,6 +54,10 @@ LABEL_STYLE_CHOICES = [
 MIN_REGION_SIZE = 5
 NO_REGION_TEXT = "Chưa chọn vùng: đếm cả ảnh. Muốn chỉ đếm một khu vực, bấm 2 góc lên ảnh kết quả."
 
+# Ảnh trong bộ ảnh của tab Nhiều ảnh được thu nhỏ còn cạnh dài tối đa 1280px,
+# để đếm nhiều ảnh điện thoại (12MP) không chiếm hàng GB bộ nhớ
+GALLERY_MAX_SIDE = 1280
+
 # Thư mục chứa file tải về của mọi lần đếm; thư mục con cũ hơn 1 giờ sẽ bị xóa
 EXPORT_ROOT = Path(tempfile.gettempdir()) / "vision_count"
 
@@ -108,7 +112,12 @@ def count_single(
     region,
     history: HistoryStore | None = None,
 ):
-    """Nút 'Đếm' của tab Một ảnh. Trả về 5 giá trị cho 5 ô kết quả."""
+    """Nút 'Đếm' của tab Một ảnh.
+
+    Trả về (ảnh kết quả, tóm tắt, bảng số lượng, bảng chi tiết, file tải về, ảnh nền, các điểm).
+    "Ảnh nền" là ảnh kết quả KHÔNG vẽ vùng đếm, dùng làm nền sạch khi người dùng chọn vùng mới;
+    "các điểm" luôn rỗng để bỏ góc đã bấm dở từ trước lần đếm này.
+    """
     if source_mode == SOURCE_WEBCAM:
         source, source_name = webcam_image, "Camera"  # Ảnh chụp từ camera, dạng mảng numpy
         if source is None:
@@ -128,7 +137,8 @@ def count_single(
         raise gr.Error(str(exc)) from exc
 
     result = filter_by_region(result, region)
-    annotated = draw_detections(image, result.detections, label_fn=vi_label, label_style=label_style, region=region)
+    base = draw_detections(image, result.detections, label_fn=vi_label, label_style=label_style)
+    annotated = draw_region(base, region) if region else base
     mode = _mode_text(bool(tiled), region)
 
     footer = f"_Model: {_model_name(model_key)} · Chế độ: {mode}_"
@@ -157,32 +167,34 @@ def count_single(
     files = export_result(annotated, result, new_export_dir())
     if history is not None:
         history.add(source_name, model_key, mode, result)
-    return annotated, summary, counts_table, detail_table, [str(p) for p in files]
+    return annotated, summary, counts_table, detail_table, [str(p) for p in files], base, []
 
 
 # ---------- Chọn vùng bằng 2 lần bấm lên ảnh kết quả ----------
 
-def add_region_point(image, points: list, region, xy):
+def add_region_point(base_image, points: list, region, xy):
     """Xử lý một lần bấm lên ảnh kết quả. Lần 1 đánh dấu góc thứ nhất, lần 2 tạo vùng.
 
-    Trả về (ảnh xem trước, các điểm đang chờ, vùng, dòng hướng dẫn).
+    Luôn vẽ lên ảnh nền sạch (base_image, từ lần Đếm gần nhất) nên dấu cũ không bị cộng dồn.
+    Trả về (ảnh hiển thị, các điểm đang chờ, vùng, dòng hướng dẫn).
     """
-    if image is None:
+    if base_image is None:
         return None, [], region, "Hãy bấm **Đếm** một ảnh trước, rồi bấm 2 góc lên ảnh kết quả để chọn vùng."
     x, y = (float(v) for v in xy)
     if not points:
-        return draw_region(image, point=(x, y)), [(x, y)], region, f"Đã chọn góc 1 ({x:.0f}, {y:.0f}). Bấm điểm thứ 2."
+        return draw_region(base_image, point=(x, y)), [(x, y)], region, f"Đã chọn góc 1 ({x:.0f}, {y:.0f}). Bấm điểm thứ 2."
     new_region = normalize_region(points[0], (x, y))
     if new_region[2] - new_region[0] < MIN_REGION_SIZE or new_region[3] - new_region[1] < MIN_REGION_SIZE:
-        return image, [], region, "Vùng quá nhỏ, hãy bấm lại 2 góc cách xa nhau hơn."
+        # Bỏ chấm của lần bấm hỏng, hiện lại vùng đang dùng (nếu có)
+        return draw_region(base_image, region), [], region, "Vùng quá nhỏ, hãy bấm lại 2 góc cách xa nhau hơn."
     x1, y1, x2, y2 = new_region
     info = f"Vùng đếm: ({x1:.0f}, {y1:.0f}) → ({x2:.0f}, {y2:.0f}). Bấm **Đếm** để chỉ đếm trong vùng này."
-    return draw_region(image, region=new_region), [], new_region, info
+    return draw_region(base_image, region=new_region), [], new_region, info
 
 
-def clear_region():
-    """Nút 'Xóa vùng': quay lại đếm cả ảnh. Trả về (vùng, các điểm, dòng hướng dẫn)."""
-    return None, [], NO_REGION_TEXT
+def clear_region(base_image):
+    """Nút 'Xóa vùng': quay lại đếm cả ảnh. Trả về (ảnh nền sạch, vùng, các điểm, dòng hướng dẫn)."""
+    return base_image, None, [], NO_REGION_TEXT
 
 
 # ---------- Nhiều ảnh ----------
@@ -211,6 +223,7 @@ def count_batch(
         annotated = draw_detections(
             load_image(path), item.result.detections, label_fn=vi_label, label_style=label_style
         )
+        annotated.thumbnail((GALLERY_MAX_SIDE, GALLERY_MAX_SIDE))  # chỉ giữ bản thu nhỏ trong bộ nhớ
         gallery.append((annotated, f"{item.name}: {item.result.total}"))
         if history is not None:
             history.add(item.name, model_key, f"Nhiều ảnh, {mode}", item.result)

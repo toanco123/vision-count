@@ -176,6 +176,7 @@ Khi bật **Chế độ vật nhỏ**, ảnh được chia thành các ô 640×6
 - **Nên bật** khi: ảnh lớn, đám đông, hàng hóa chụp từ xa, vật chiếm rất ít diện tích ảnh.
 - **Không cần bật** khi: ảnh nhỏ (dưới 640px thì chạy như thường), vật to rõ ràng.
 - **Đổi lại**: chậm hơn, vì ảnh càng lớn thì càng nhiều ô phải nhận diện.
+- **Lưu ý**: khi nhìn gần vào từng ô, model đôi khi nhận nhầm hoa văn hay chữ trên biển thành vật khác (độ tin cậy thấp, khoảng 25-40%). Nếu thấy vật lạ, hãy **tăng ngưỡng độ tin cậy** (ví dụ 0.4) hoặc dùng ô **Chỉ đếm các loại** để chỉ đếm loại bạn cần.
 
 Ví dụ thử nghiệm (Mac M1, model Nano): một ảnh 2400×2400 có 16 người cao 60px. Chế độ thường đếm được 1 người (0.1 giây), chế độ vật nhỏ đếm được 15 người (khoảng 1.5 giây).
 

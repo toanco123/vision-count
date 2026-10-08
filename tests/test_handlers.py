@@ -13,6 +13,7 @@ from ultralytics.utils import ASSETS
 from ui import handlers
 from ui.handlers import SOURCE_UPLOAD, SOURCE_WEBCAM
 from vision_count import LABEL_FULL, LABEL_NONE, HistoryStore
+from vision_count.drawing import REGION_COLOR
 
 BUS = str(ASSETS / "bus.jpg")
 ZIDANE = str(ASSETS / "zidane.jpg")
@@ -32,14 +33,14 @@ def _single(history=None, model_key="nano", label_style=LABEL_FULL, tiled=False,
 # ---------- Một ảnh ----------
 
 def test_tables_show_vietnamese_names():
-    _, _, counts_table, detail_table, _ = _single()
+    _, _, counts_table, detail_table, *_ = _single()
     assert "người (person)" in counts_table["Loại vật thể"].tolist()
     assert "xe buýt (bus)" in detail_table["Loại vật thể"].tolist()
 
 
 def test_returns_three_download_files_in_separate_folders():
-    *_, first = _single()
-    *_, second = _single()
+    first = _single()[4]
+    second = _single()[4]
     assert [Path(p).suffix for p in first] == [".jpg", ".csv", ".csv"]
     assert all(Path(p).is_file() for p in first)
     assert Path(first[0]).parent != Path(second[0]).parent
@@ -57,7 +58,7 @@ def test_label_style_changes_image():
 
 
 def test_count_single_with_region_mentions_region():
-    _, summary, counts_table, _, _ = _single(region=(0, 0, 400, 1080))  # nửa trái ảnh xe buýt
+    _, summary, counts_table, *_ = _single(region=(0, 0, 400, 1080))  # nửa trái ảnh xe buýt
     full = _single()[2]
     assert "vùng" in summary.lower()
     assert counts_table["Số lượng"].sum() < full["Số lượng"].sum()
@@ -89,20 +90,43 @@ def test_missing_image_raises_friendly_error():
 
 # ---------- Chọn vùng bằng 2 lần bấm ----------
 
+def _yellow(img, xy):
+    return img.getpixel(xy) == REGION_COLOR
+
+
+def test_count_single_returns_clean_base_and_resets_points():
+    annotated, *_, base, points = _single(region=(0, 0, 400, 1080))
+    assert points == []
+    assert _yellow(annotated, (0, 500))  # ảnh hiển thị có khung vàng của vùng đang dùng
+    assert not _yellow(base, (0, 500))  # ảnh nền để chọn vùng thì sạch, không có vùng cũ
+
+
 def test_add_region_point_two_clicks_make_region():
-    img = Image.new("RGB", (200, 200))
-    marked, points, region, info = handlers.add_region_point(img, [], None, (150, 120))
+    base = Image.new("RGB", (200, 200))
+    marked, points, region, info = handlers.add_region_point(base, [], None, (150, 120))
     assert points == [(150, 120)] and region is None and "điểm thứ 2" in info
-    marked2, points2, region2, info2 = handlers.add_region_point(marked, points, None, (20, 30))
+    assert _yellow(marked, (150, 120))
+    marked2, points2, region2, info2 = handlers.add_region_point(base, points, None, (20, 30))
     assert points2 == [] and region2 == (20, 30, 150, 120)
     assert "Đếm" in info2
 
 
+def test_new_region_replaces_old_marks_on_screen():
+    base = Image.new("RGB", (200, 200))
+    _, pts, _, _ = handlers.add_region_point(base, [], (10, 10, 100, 100), (120, 120))
+    shown, _, region, _ = handlers.add_region_point(base, pts, (10, 10, 100, 100), (190, 190))
+    assert region == (120, 120, 190, 190)
+    assert _yellow(shown, (120, 150))  # cạnh vùng mới
+    assert not _yellow(shown, (10, 50))  # không còn cạnh vùng cũ
+
+
 def test_add_region_point_rejects_tiny_region():
-    img = Image.new("RGB", (200, 200))
-    _, points, region, info = handlers.add_region_point(img, [(50, 50)], (1, 1, 100, 100), (52, 51))
+    base = Image.new("RGB", (200, 200))
+    shown, points, region, info = handlers.add_region_point(base, [(50, 50)], (1, 1, 100, 100), (52, 51))
     assert points == [] and region == (1, 1, 100, 100)  # giữ vùng cũ
     assert "quá nhỏ" in info
+    assert not _yellow(shown, (50, 50))  # chấm của lần bấm hỏng không còn trên ảnh
+    assert _yellow(shown, (1, 50))  # vùng đang dùng vẫn hiện
 
 
 def test_add_region_point_without_image():
@@ -111,9 +135,11 @@ def test_add_region_point_without_image():
     assert "Đếm" in info
 
 
-def test_clear_region():
-    region, points, info = handlers.clear_region()
+def test_clear_region_shows_clean_base():
+    base = Image.new("RGB", (200, 200))
+    shown, region, points, info = handlers.clear_region(base)
     assert region is None and points == [] and info == handlers.NO_REGION_TEXT
+    assert ImageChops.difference(shown, base).getbbox() is None
 
 
 # ---------- Nhiều ảnh ----------
@@ -129,6 +155,15 @@ def test_count_batch_summarizes_and_exports(history, tmp_path):
     assert len(gallery) == 2  # chỉ các ảnh đếm được
     assert Path(csv_path).is_file()
     assert [e.source for e in history.recent()] == ["zidane.jpg", "bus.jpg"]
+
+
+def test_count_batch_gallery_uses_small_previews(tmp_path):
+    big = tmp_path / "lon.jpg"
+    Image.open(BUS).convert("RGB").resize((2400, 3200)).save(big)
+    _, _, gallery, _ = handlers.count_batch([str(big)], "nano", 0.25, [], LABEL_FULL, False, None)
+    [(preview, caption)] = gallery
+    assert max(preview.size) <= handlers.GALLERY_MAX_SIDE
+    assert caption.startswith("lon.jpg")
 
 
 def test_count_batch_without_files_raises():

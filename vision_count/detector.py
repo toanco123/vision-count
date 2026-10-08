@@ -147,15 +147,19 @@ class ObjectDetector:
         class_ids = self._class_names_to_ids(classes) if classes else None
 
         if tiled:
-            from vision_count.tiling import make_tiles, merge_overlaps  # import ở đây để tránh import vòng
+            # import ở đây để tránh import vòng (tiling.py import Detection từ file này)
+            from vision_count.tiling import drop_cut_boxes, make_tiles, merge_overlaps
 
-            tiles = make_tiles(pil_image.width, pil_image.height, config.DEFAULT_IMAGE_SIZE, config.TILE_OVERLAP)
-            # Nhận diện cả ảnh (bắt vật to) rồi từng ô (bắt vật nhỏ), cuối cùng gộp khung trùng
+            w, h = pil_image.width, pil_image.height
+            tiles = make_tiles(w, h, config.DEFAULT_IMAGE_SIZE, config.TILE_OVERLAP)
+            # Lượt 0: cả ảnh (bắt vật to). Các lượt sau: từng ô (bắt vật nhỏ), bỏ khung bị ô cắt dở.
             detections = self._predict(pil_image, confidence, class_ids)
             if len(tiles) > 1:
+                passes = [detections]
                 for x1, y1, x2, y2 in tiles:
-                    detections += self._predict(pil_image.crop((x1, y1, x2, y2)), confidence, class_ids, x1, y1)
-                detections = merge_overlaps(detections)
+                    tile_dets = self._predict(pil_image.crop((x1, y1, x2, y2)), confidence, class_ids, x1, y1)
+                    passes.append(drop_cut_boxes(tile_dets, (x1, y1, x2, y2), w, h))
+                detections = merge_overlaps(passes)
         else:
             detections = self._predict(pil_image, confidence, class_ids)
 

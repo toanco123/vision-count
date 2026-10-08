@@ -73,6 +73,7 @@ def build_app(history: HistoryStore | None = None) -> gr.Blocks:
                 source_mode = gr.State(SOURCE_UPLOAD)
                 region_state = gr.State(None)
                 points_state = gr.State([])
+                base_state = gr.State(None)  # ảnh kết quả chưa vẽ vùng: nền sạch để chọn vùng mới
 
                 with gr.Row():
                     with gr.Column(scale=1):
@@ -94,7 +95,7 @@ def build_app(history: HistoryStore | None = None) -> gr.Blocks:
 
                     with gr.Column(scale=2):
                         # interactive=False: ảnh kết quả chỉ để xem và bấm chọn vùng, không phải ô tải ảnh lên
-                        # (vì nó là đầu vào của sự kiện select, Gradio sẽ tự cho tải lên nếu không khóa lại)
+                        # (vì nó có sự kiện select, Gradio có thể tự cho tải lên nếu không khóa lại)
                         image_output = gr.Image(
                             label="Kết quả (bấm 2 góc lên ảnh để chọn vùng đếm)", type="pil", interactive=False
                         )
@@ -136,19 +137,31 @@ def build_app(history: HistoryStore | None = None) -> gr.Blocks:
         run_button.click(
             fn=on_count,
             inputs=[source_mode, image_input, webcam_input, *settings, region_state],
-            outputs=[image_output, summary_output, counts_output, detail_output, download_output],
+            outputs=[
+                image_output,
+                summary_output,
+                counts_output,
+                detail_output,
+                download_output,
+                base_state,
+                points_state,
+            ],
         )
 
-        def on_image_click(image, points, region, evt: gr.SelectData):
+        def on_image_click(base, points, region, evt: gr.SelectData):
             # evt.index = [x, y]: tọa độ pixel trên ảnh gốc nơi người dùng bấm
-            return handlers.add_region_point(image, points, region, evt.index)
+            return handlers.add_region_point(base, points, region, evt.index)
 
         image_output.select(
             fn=on_image_click,
-            inputs=[image_output, points_state, region_state],
+            inputs=[base_state, points_state, region_state],
             outputs=[image_output, points_state, region_state, region_info],
         )
-        clear_region_button.click(fn=handlers.clear_region, outputs=[region_state, points_state, region_info])
+        clear_region_button.click(
+            fn=handlers.clear_region,
+            inputs=[base_state],
+            outputs=[image_output, region_state, points_state, region_info],
+        )
 
         def on_batch(paths, model_key, conf, classes, style, tiled):
             return handlers.count_batch(paths, model_key, conf, classes, style, tiled, history)
