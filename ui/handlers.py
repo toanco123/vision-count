@@ -71,8 +71,15 @@ def new_export_dir(root: Path = EXPORT_ROOT, max_age_seconds: int = 3600) -> Pat
     root.mkdir(parents=True, exist_ok=True)
     cutoff = time.time() - max_age_seconds
     for child in root.iterdir():
-        if child.is_dir() and child.stat().st_mtime < cutoff:
-            shutil.rmtree(child, ignore_errors=True)
+        try:
+            if not child.is_dir():
+                continue
+            # Tuổi = lần sửa MỚI NHẤT của thư mục và các file bên trong: video đang ghi dở vẫn được giữ
+            newest = max([child.stat().st_mtime] + [f.stat().st_mtime for f in child.iterdir()])
+            if newest < cutoff:
+                shutil.rmtree(child, ignore_errors=True)
+        except OSError:  # tiến trình khác vừa xóa thư mục này
+            continue
     return Path(tempfile.mkdtemp(dir=root))
 
 
@@ -285,7 +292,7 @@ def count_video_file(
     headline = (
         f"### {result.total} vật thể khác nhau trong video"
         if result.total
-        else "### Không đếm được vật thể nào trong video\nThử giảm ngưỡng độ tin cậy hoặc bỏ bộ lọc loại vật."
+        else "### Không đếm được vật thể nào trong video\nThử giảm ngưỡng độ tin cậy (ví dụ 0.15) hoặc bỏ bộ lọc loại vật."
     )
     warning = f"\n\n⚠️ **{result.warning}**\n" if result.warning else ""
     summary = (

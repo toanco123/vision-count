@@ -6,6 +6,8 @@ cố định qua các khung; đếm số ID khác nhau là ra số vật thật 
 
 from __future__ import annotations
 
+import math
+import tempfile
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -57,6 +59,36 @@ class VideoCountResult:
             f"Chỉ đọc được {self.frames_processed}/{self.frames_expected} khung hình: video có thể bị hỏng, "
             "kết quả chỉ tính phần đã đọc được."
         )
+
+
+# Giá trị mặc định lấy từ cfg/trackers/bytetrack.yaml của Ultralytics
+_BYTETRACK_DEFAULTS = {
+    "tracker_type": "bytetrack",
+    "track_high_thresh": 0.25,
+    "track_low_thresh": 0.1,
+    "new_track_thresh": 0.25,
+    "track_buffer": 30,
+    "match_thresh": 0.8,
+    "fuse_score": True,
+}
+
+
+def _tracker_config(confidence: float) -> str:
+    """File cấu hình ByteTrack. Mặc định ByteTrack chỉ tạo ID mới cho khung có độ tin cậy >= 0.25,
+    nên khi người dùng hạ ngưỡng dưới 0.25 thì hạ theo, để các vật mờ cũng được theo dõi."""
+    cfg = dict(_BYTETRACK_DEFAULTS)
+    if confidence < cfg["new_track_thresh"]:
+        cfg["track_high_thresh"] = cfg["new_track_thresh"] = confidence
+        cfg["track_low_thresh"] = min(cfg["track_low_thresh"], confidence)
+    path = Path(tempfile.gettempdir()) / f"vision_count_bytetrack_{confidence:.3f}.yaml"
+    path.write_text("".join(f"{k}: {v}\n" for k, v in cfg.items()), encoding="utf-8")
+    return str(path)
+
+
+def _effective_min_frames(min_track_frames: int, vid_stride: int) -> int:
+    """Số khung ĐÃ XỬ LÝ tối thiểu. Bỏ bớt khung (stride) thì cần ít khung hơn cho cùng thời lượng,
+    nhưng vẫn ít nhất 2 (nếu yêu cầu từ 2 trở lên) để bỏ ID chỉ thấy 1 khung."""
+    return max(min(2, min_track_frames), math.ceil(min_track_frames / vid_stride))
 
 
 def _check_format(video_path: str | Path, name: str) -> None:
@@ -157,8 +189,10 @@ def count_video(
     model = YOLO(str(detector.model_path))
     expected = total_frames // vid_stride  # Ultralytics bỏ qua khung theo cùng cách tính này
     seen: dict[int, Counter] = defaultdict(Counter)  # ID -> số khung xuất hiện theo từng loại
+    frame_ids: list[list[int]] = []  # các ID có mặt ở từng khung (để tính "nhiều nhất cùng lúc")
+    min_frames = _effective_min_frames(min_track_frames, vid_stride)
     writer = None
-    processed = peak = 0
+    processed = 0
     try:
         for r in model.track(
             source=str(video_path),
@@ -167,7 +201,7 @@ def count_video(
             conf=confidence,
             classes=class_ids,
             imgsz=config.DEFAULT_IMAGE_SIZE,
-            tracker=config.TRACKER,
+            tracker=_tracker_config(confidence),
             vid_stride=vid_stride,
             device=detector.device,
             verbose=False,
@@ -178,11 +212,11 @@ def count_video(
             clss = r.boxes.cls.int().tolist() if ids else []
             for track_id, cls in zip(ids, clss):
                 seen[track_id][model.names[cls]] += 1
-            peak = max(peak, len(ids))
+            frame_ids.append(ids)
             if output_path is not None:
                 if writer is None:
                     writer = _open_writer(Path(output_path), fps / vid_stride, r.orig_img.shape)
-                counted = sum(1 for c in seen.values() if sum(c.values()) >= min_track_frames)
+                counted = sum(1 for c in seen.values() if sum(c.values()) >= min_frames)
                 writer.write(_draw_frame(r.orig_img, boxes, ids, clss, model.names, label_fn, counted))
             if progress:
                 progress(processed, max(expected, processed))  # không biết số khung thì không vượt 100%
@@ -190,10 +224,10 @@ def count_video(
         if writer is not None:
             writer.release()
 
-    counts: Counter[str] = Counter()
-    for per_class in seen.values():
-        if sum(per_class.values()) >= min_track_frames:  # bỏ ID chập chờn
-            counts[per_class.most_common(1)[0][0]] += 1  # loại xuất hiện nhiều nhất của ID đó
+    counted_ids = {tid for tid, per_class in seen.items() if sum(per_class.values()) >= min_frames}  # bỏ ID chập chờn
+    counts: Counter[str] = Counter(seen[tid].most_common(1)[0][0] for tid in counted_ids)  # loại thấy nhiều nhất
+    # Chỉ tính các vật đã được đếm, để "nhiều nhất cùng lúc" không lớn hơn tổng
+    peak = max((len(counted_ids.intersection(ids)) for ids in frame_ids), default=0)
     return VideoCountResult(
         counts=dict(counts.most_common()),
         frames_processed=processed,

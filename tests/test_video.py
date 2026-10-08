@@ -116,3 +116,33 @@ def test_incomplete_read_warns(synthetic_video, monkeypatch):
     assert result.frames_processed == 30 and result.frames_expected == 90
     assert not result.complete
     assert "Chỉ đọc được 30/90 khung hình" in result.warning
+
+
+# ---------- Đợt sửa điểm nhỏ ----------
+
+def test_peak_counts_only_counted_tracks(synthetic_video):
+    result = count_video(get_detector(), synthetic_video, min_track_frames=1000)
+    assert result.total == 0 and result.peak_in_frame == 0
+
+
+def test_min_frames_scale_with_stride():
+    assert video_module._effective_min_frames(3, 1) == 3
+    assert video_module._effective_min_frames(3, 2) == 2
+    assert video_module._effective_min_frames(3, 5) == 2  # vẫn bỏ ID chỉ thấy 1 khung
+    assert video_module._effective_min_frames(1, 5) == 1
+    assert video_module._effective_min_frames(1000, 1) == 1000
+
+
+def test_tracker_config_follows_low_confidence():
+    import yaml
+
+    low = yaml.safe_load(open(video_module._tracker_config(0.1), encoding="utf-8"))
+    assert low["track_high_thresh"] == 0.1 and low["new_track_thresh"] == 0.1
+    assert low["track_low_thresh"] <= 0.1
+    default = yaml.safe_load(open(video_module._tracker_config(0.5), encoding="utf-8"))
+    assert default["track_high_thresh"] == 0.25 and default["new_track_thresh"] == 0.25
+    assert default["tracker_type"] == "bytetrack"
+
+
+def test_low_confidence_still_counts(synthetic_video):
+    assert count_video(get_detector(), synthetic_video, confidence=0.1).counts.get("person", 0) >= 3

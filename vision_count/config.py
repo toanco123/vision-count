@@ -37,5 +37,3 @@ HISTORY_DB = PROJECT_ROOT / "data" / "history.db"
 
 # Đếm video: một ID phải xuất hiện ít nhất 3 khung hình mới được tính (bỏ nhận diện chập chờn)
 MIN_TRACK_FRAMES = 3
-# Thuật toán tracking có sẵn trong Ultralytics (ByteTrack: nhanh, hợp chạy CPU)
-TRACKER = "bytetrack.yaml"

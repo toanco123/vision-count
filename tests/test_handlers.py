@@ -245,3 +245,13 @@ def test_class_choices_follow_model():
     assert update["choices"][0] == ("người (person)", "person")
     assert len(update["choices"]) == 80
     assert update["value"] == []
+
+
+def test_new_export_dir_keeps_folder_with_recent_file(tmp_path):
+    busy = tmp_path / "dang_ghi_video"
+    busy.mkdir()
+    (busy / "video_ket_qua.mp4").write_bytes(b"...")  # file vừa được ghi
+    two_hours_ago = time.time() - 7200
+    os.utime(busy, (two_hours_ago, two_hours_ago))  # thư mục tạo từ lâu
+    handlers.new_export_dir(root=tmp_path, max_age_seconds=3600)
+    assert busy.exists()
