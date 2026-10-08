@@ -15,6 +15,7 @@ from vision_count.detector import (
     load_image,
 )
 from vision_count.drawing import draw_detections
+from vision_count.export import export_result
 from vision_count.labels_vi import display_label, vi_label
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     "ObjectDetector",
     "display_label",
     "draw_detections",
+    "export_result",
     "load_image",
     "vi_label",
 ]
