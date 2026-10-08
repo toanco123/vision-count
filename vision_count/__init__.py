@@ -21,6 +21,7 @@ from vision_count.drawing import (
     LABEL_NUMBER,
     LABEL_STYLES,
     draw_detections,
+    draw_label,
     draw_region,
 )
 from vision_count.export import export_result
@@ -28,6 +29,7 @@ from vision_count.history import HistoryEntry, HistoryStore
 from vision_count.labels_vi import display_label, vi_label
 from vision_count.region import Region, filter_by_region, normalize_region
 from vision_count.registry import get_detector, is_model_downloaded
+from vision_count.video import InvalidVideoError, VideoCountResult, count_video, write_video_csv
 
 __all__ = [
     "LABEL_FULL",
@@ -40,11 +42,15 @@ __all__ = [
     "HistoryEntry",
     "HistoryStore",
     "InvalidImageError",
+    "InvalidVideoError",
     "ObjectDetector",
     "Region",
+    "VideoCountResult",
     "count_many",
+    "count_video",
     "display_label",
     "draw_detections",
+    "draw_label",
     "draw_region",
     "export_result",
     "filter_by_region",
@@ -54,4 +60,5 @@ __all__ = [
     "normalize_region",
     "vi_label",
     "write_batch_csv",
+    "write_video_csv",
 ]

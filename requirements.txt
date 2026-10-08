@@ -2,6 +2,12 @@
 ultralytics>=8.3.0
 # Giao diện web giai đoạn 1
 gradio>=5.0
+# API (đã được cài sẵn theo Gradio, ghi ra cho rõ)
+fastapi>=0.110
+uvicorn>=0.29
+python-multipart>=0.0.9
+# Tracking trong video (ByteTrack cần thư viện này)
+lap>=0.5.12
 # Đọc và kiểm tra file ảnh
 pillow>=10.0
 # Chạy test

@@ -34,3 +34,8 @@ TILE_OVERLAP = 0.2
 
 # File SQLite lưu lịch sử đếm (chỉ số liệu, không lưu ảnh). Không đưa lên git.
 HISTORY_DB = PROJECT_ROOT / "data" / "history.db"
+
+# Đếm video: một ID phải xuất hiện ít nhất 3 khung hình mới được tính (bỏ nhận diện chập chờn)
+MIN_TRACK_FRAMES = 3
+# Thuật toán tracking có sẵn trong Ultralytics (ByteTrack: nhanh, hợp chạy CPU)
+TRACKER = "bytetrack.yaml"

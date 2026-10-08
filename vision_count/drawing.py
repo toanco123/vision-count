@@ -80,6 +80,15 @@ def draw_region(
     return marked
 
 
+def draw_label(draw: ImageDraw.ImageDraw, x: float, y: float, text: str, color, font, pad: int) -> None:
+    """Vẽ nhãn chữ trắng trên nền màu, đặt phía trên điểm (x, y); sát mép trên thì đặt xuống dưới."""
+    left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
+    text_w, text_h = right - left, bottom - top
+    label_y = y - text_h - 2 * pad if y - text_h - 2 * pad >= 0 else y
+    draw.rectangle((x, label_y, x + text_w + 2 * pad, label_y + text_h + 2 * pad), fill=color)
+    draw.text((x + pad, label_y + pad - top), text, fill=(255, 255, 255), font=font)
+
+
 def draw_detections(
     image: Image.Image,
     detections: list[Detection],
@@ -117,12 +126,6 @@ def draw_detections(
             # Nhãn dạng "#1 người 87%": số thứ tự giúp đối chiếu khi đếm bằng mắt
             name = label_fn(det.label) if label_fn else det.label
             text = f"#{index} {name} {det.confidence:.0%}"
-        left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
-        text_w, text_h = right - left, bottom - top
-        pad = max(2, line_width)
-        # Đặt nhãn phía trên khung; nếu sát mép trên thì đặt vào trong khung
-        label_y = y1 - text_h - 2 * pad if y1 - text_h - 2 * pad >= 0 else y1
-        draw.rectangle((x1, label_y, x1 + text_w + 2 * pad, label_y + text_h + 2 * pad), fill=color)
-        draw.text((x1 + pad, label_y + pad - top), text, fill=(255, 255, 255), font=font)
+        draw_label(draw, x1, y1, text, color, font, pad=max(2, line_width))
 
     return annotated

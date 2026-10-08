@@ -11,9 +11,9 @@ from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Protocol
 
 from vision_count import config
-from vision_count.detector import DetectionResult
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS history (
@@ -26,6 +26,15 @@ CREATE TABLE IF NOT EXISTS history (
     counts_json TEXT NOT NULL
 )
 """
+
+
+class CountResult(Protocol):
+    """Bất kỳ kết quả nào có số đếm theo loại và tổng (ảnh: DetectionResult, video: VideoCountResult)."""
+
+    counts: dict[str, int]
+
+    @property
+    def total(self) -> int: ...
 
 
 @dataclass
@@ -51,7 +60,7 @@ class HistoryStore:
         return _Connection(self.db_path)
 
     def add(
-        self, source: str, model_key: str, mode: str, result: DetectionResult, created_at: datetime | None = None
+        self, source: str, model_key: str, mode: str, result: CountResult, created_at: datetime | None = None
     ) -> int:
         """Lưu một lần đếm, trả về id của dòng mới."""
         stamp = (created_at or datetime.now()).strftime("%Y-%m-%d %H:%M:%S")
