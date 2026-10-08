@@ -16,6 +16,8 @@ from vision_count.labels_vi import vi_label
 
 COUNT_HEADER = ["Loại vật thể", "Tên gốc (model)", "Số lượng"]
 DETAIL_HEADER = ["#", "Loại vật thể", "Tên gốc (model)", "Độ tin cậy", "x1", "y1", "x2", "y2"]
+# (tiền tố, đuôi) của 3 file xuất ra, theo đúng thứ tự trả về
+EXPORT_FILES = [("ket_qua", ".jpg"), ("so_luong", ".csv"), ("chi_tiet", ".csv")]
 
 
 def export_result(
@@ -29,16 +31,19 @@ def export_result(
     out_dir.mkdir(parents=True, exist_ok=True)
     # Dấu thời gian trong tên file để các lần tải về không trùng tên nhau
     stamp = (timestamp or datetime.now()).strftime("%Y%m%d_%H%M%S")
+    # Nếu đã có file cùng tên (gọi 2 lần trong cùng 1 giây) thì thêm hậu tố _2, _3...
+    base, n = stamp, 1
+    while any((out_dir / f"{prefix}_{stamp}{ext}").exists() for prefix, ext in EXPORT_FILES):
+        n += 1
+        stamp = f"{base}_{n}"
+    image_path, counts_path, detail_path = (out_dir / f"{prefix}_{stamp}{ext}" for prefix, ext in EXPORT_FILES)
 
-    image_path = out_dir / f"ket_qua_{stamp}.jpg"
     annotated.convert("RGB").save(image_path, quality=95)
 
-    counts_path = out_dir / f"so_luong_{stamp}.csv"
     count_rows = [[vi_label(label), label, n] for label, n in result.counts.items()]
     count_rows.append(["Tổng cộng", "", result.total])
     _write_csv(counts_path, COUNT_HEADER, count_rows)
 
-    detail_path = out_dir / f"chi_tiet_{stamp}.csv"
     detail_rows = [
         [i, vi_label(d.label), d.label, d.confidence, *d.box]
         for i, d in enumerate(result.detections, start=1)

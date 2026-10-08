@@ -70,3 +70,14 @@ def test_export_empty_result(tmp_path):
     assert len(files) == 3
     assert _read_csv(files[1]) == [["Loại vật thể", "Tên gốc (model)", "Số lượng"], ["Tổng cộng", "", "0"]]
     assert len(_read_csv(files[2])) == 1  # chỉ có dòng tiêu đề
+
+
+def test_export_same_second_does_not_overwrite(tmp_path):
+    first = export_result(Image.new("RGB", (100, 80)), _result(), tmp_path, FIXED_TIME)
+    second = export_result(Image.new("RGB", (100, 80)), _result(), tmp_path, FIXED_TIME)
+    assert [p.name for p in second] == [
+        "ket_qua_20261008_153045_2.jpg",
+        "so_luong_20261008_153045_2.csv",
+        "chi_tiet_20261008_153045_2.csv",
+    ]
+    assert all(p.is_file() for p in first + second)
