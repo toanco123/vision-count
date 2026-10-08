@@ -10,17 +10,30 @@ from vision_count import InvalidImageError, ObjectDetector, config, draw_detecti
 COUNT_COLUMNS = ["Loại vật thể", "Số lượng"]
 DETAIL_COLUMNS = ["#", "Loại vật thể", "Độ tin cậy", "Khung (x1, y1, x2, y2)"]
 
+# Hai nguồn ảnh: tải file lên hoặc chụp từ camera
+SOURCE_UPLOAD = "upload"
+SOURCE_WEBCAM = "webcam"
+
 
 def build_app(detector: ObjectDetector) -> gr.Blocks:
     """Tạo giao diện, nhận vào một detector đã nạp sẵn model."""
 
-    def count_objects(image_path, confidence, selected_classes):
-        """Hàm được gọi khi bấm nút 'Đếm'. Trả về 4 giá trị cho 4 ô kết quả."""
-        if not image_path:
-            raise gr.Error("Vui lòng tải một ảnh lên trước.")
+    def count_objects(source_mode, image_path, webcam_image, confidence, selected_classes):
+        """Hàm được gọi khi bấm nút 'Đếm'. Trả về 4 giá trị cho 4 ô kết quả.
+
+        source_mode cho biết người dùng đang ở tab nào: "upload" hoặc "webcam".
+        """
+        if source_mode == SOURCE_WEBCAM:
+            source = webcam_image  # Ảnh chụp từ camera, dạng mảng numpy
+            if source is None:
+                raise gr.Error("Vui lòng chụp ảnh từ camera trước.")
+        else:
+            source = image_path  # Đường dẫn file đã tải lên
+            if not source:
+                raise gr.Error("Vui lòng tải một ảnh lên trước.")
 
         try:
-            image = load_image(image_path)
+            image = load_image(source)
             result = detector.detect(image, confidence=confidence, classes=selected_classes or None)
         except (InvalidImageError, ValueError) as exc:
             # gr.Error hiện thông báo lỗi màu đỏ trên giao diện thay vì làm sập app
@@ -50,16 +63,29 @@ def build_app(detector: ObjectDetector) -> gr.Blocks:
     with gr.Blocks(title="vision-count") as app:
         gr.Markdown(
             "# vision-count: đếm vật thể trong ảnh\n"
-            "Tải ảnh lên, chọn ngưỡng độ tin cậy rồi bấm **Đếm**. "
+            "Tải ảnh lên hoặc chụp bằng camera, chọn ngưỡng độ tin cậy rồi bấm **Đếm**. "
             "Model nhận được 80 loại vật thông dụng (người, xe, chó, mèo, chai, cốc...)."
         )
 
         with gr.Row():
             # Cột trái: đầu vào
             with gr.Column(scale=1):
-                # Dùng gr.File thay vì gr.Image để chính code của mình kiểm tra file,
-                # nhờ vậy file hỏng hoặc không phải ảnh sẽ có thông báo lỗi tiếng Việt rõ ràng.
-                image_input = gr.File(label="Ảnh cần đếm", file_types=["image"], type="filepath")
+                # Ghi nhớ tab đang mở để nút "Đếm" biết lấy ảnh từ đâu
+                source_mode = gr.State(SOURCE_UPLOAD)
+
+                with gr.Tabs():
+                    with gr.Tab("Tải ảnh") as upload_tab:
+                        # Dùng gr.File thay vì gr.Image để chính code của mình kiểm tra file,
+                        # nhờ vậy file hỏng hoặc không phải ảnh sẽ có thông báo lỗi tiếng Việt rõ ràng.
+                        image_input = gr.File(label="Ảnh cần đếm", file_types=["image"], type="filepath")
+                    with gr.Tab("Camera") as webcam_tab:
+                        # sources=["webcam"]: chỉ cho chụp từ camera. Trình duyệt sẽ hỏi quyền lần đầu.
+                        webcam_input = gr.Image(label="Chụp ảnh từ camera", sources=["webcam"], type="numpy")
+
+                # Khi người dùng bấm chuyển tab thì cập nhật source_mode
+                upload_tab.select(fn=lambda: SOURCE_UPLOAD, outputs=source_mode)
+                webcam_tab.select(fn=lambda: SOURCE_WEBCAM, outputs=source_mode)
+
                 confidence_input = gr.Slider(
                     minimum=0.05,
                     maximum=0.95,
@@ -85,7 +111,7 @@ def build_app(detector: ObjectDetector) -> gr.Blocks:
 
         run_button.click(
             fn=count_objects,
-            inputs=[image_input, confidence_input, class_input],
+            inputs=[source_mode, image_input, webcam_input, confidence_input, class_input],
             outputs=[image_output, summary_output, counts_output, detail_output],
         )
 

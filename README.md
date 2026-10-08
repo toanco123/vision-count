@@ -107,10 +107,12 @@ Muốn tắt ứng dụng: quay lại Terminal và bấm `Ctrl + C`.
 
 ### Cách dùng
 
-1. Kéo thả hoặc bấm chọn ảnh ở ô **Ảnh cần đếm** (có thể thử ảnh `samples/bus.jpg`).
+1. Chọn nguồn ảnh:
+   - Tab **Tải ảnh**: kéo thả hoặc bấm chọn ảnh ở ô **Ảnh cần đếm** (có thể thử ảnh `samples/bus.jpg`).
+   - Tab **Camera**: bấm vào ô camera để bật webcam (lần đầu trình duyệt sẽ hỏi quyền, chọn **Cho phép/Allow**), rồi bấm nút chụp. Muốn chụp lại thì bấm nút xóa ảnh rồi chụp tiếp.
 2. Chỉnh **Ngưỡng độ tin cậy** nếu cần (mặc định 0.25).
 3. (Tùy chọn) Chọn vài loại trong ô **Chỉ đếm các loại**, ví dụ `person`, `car`. Để trống thì đếm tất cả.
-4. Bấm **Đếm**.
+4. Bấm **Đếm**. Ứng dụng sẽ đếm ảnh của tab đang mở.
 
 > **Lần bấm "Đếm" đầu tiên** sau khi cài có thể mất 20-30 giây vì thư viện phải chuẩn bị một số thứ (ví dụ bộ nhớ đệm font của Matplotlib). Việc này chỉ xảy ra một lần; các lần sau việc nhận diện mỗi ảnh chỉ mất chưa tới 0.1 giây (đo trên Mac M1, chạy CPU).
 
@@ -180,6 +182,7 @@ result.to_dict()
 | Báo lỗi "không phải là file ảnh hợp lệ" | File bị hỏng hoặc không phải ảnh. Dùng JPG, PNG, WEBP, BMP. |
 | "Không tìm thấy vật thể nào" | Giảm ngưỡng độ tin cậy, bỏ bộ lọc loại vật, hoặc thử ảnh rõ hơn. Nếu vật không thuộc 80 loại COCO thì xem mục fine-tune bên dưới. |
 | Lần chạy đầu báo lỗi tải model | Cần mạng ở lần đầu để tải `yolo11n.pt`. Hoặc tự tải file về rồi đặt vào thư mục `models/`. |
+| Tab Camera không hiện hình / không hỏi quyền | Trình duyệt chỉ cho dùng camera khi mở bằng `http://127.0.0.1:7860` hoặc `http://localhost:7860` (hoặc `https`). Nếu đã lỡ bấm **Chặn**, bấm biểu tượng ổ khóa cạnh thanh địa chỉ để cấp lại quyền camera. Trên macOS còn cần bật quyền tại **System Settings → Privacy & Security → Camera** cho trình duyệt. |
 | `Address already in use` (cổng 7860 đang bận) | Ứng dụng đang chạy ở một Terminal khác. Tắt nó đi, hoặc đổi `server_port` trong `app.py`. |
 
 ---
