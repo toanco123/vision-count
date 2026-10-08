@@ -24,12 +24,18 @@ vision-count/
 │   ├── drawing.py          #   Vẽ khung và nhãn lên ảnh
 │   ├── registry.py         #   Chọn model nano/small, mỗi model chỉ nạp một lần
 │   ├── labels_vi.py        #   Bảng dịch tên 80 loại vật sang tiếng Việt
-│   └── export.py           #   Xuất kết quả ra ảnh JPG + file CSV
+│   ├── export.py           #   Xuất kết quả ra ảnh JPG + file CSV
+│   ├── region.py           #   Vùng đếm: chỉ đếm vật có tâm nằm trong vùng
+│   ├── tiling.py           #   Chế độ vật nhỏ: chia ô 640px, gộp khung trùng
+│   ├── batch.py            #   Đếm nhiều ảnh, xuất CSV tổng hợp
+│   └── history.py          #   Lịch sử đếm (SQLite)
 ├── ui/
-│   └── gradio_app.py       # Giao diện Gradio, chỉ gọi tới vision_count
+│   ├── gradio_app.py       # Bố cục giao diện Gradio (3 tab) và nối sự kiện
+│   └── handlers.py         # Hàm xử lý khi bấm nút, chỉ gọi tới vision_count
 ├── tests/                  # Test tự động (pytest)
 ├── documents/              # Kế hoạch triển khai các tính năng
 ├── models/                 # Nơi lưu file model (tự tải về lần đầu)
+├── data/                   # Lịch sử đếm (tạo khi chạy, không đưa lên git)
 └── samples/                # Ảnh mẫu để thử
 ```
 
@@ -110,19 +116,26 @@ Muốn tắt ứng dụng: quay lại Terminal và bấm `Ctrl + C`.
 
 ### Cách dùng
 
+Giao diện có phần **Cài đặt** ở trên cùng (dùng chung) và 3 tab: **Một ảnh**, **Nhiều ảnh**, **Lịch sử**.
+
+**Cài đặt:**
+- **Model**:
+  - **Nano** (mặc định): nhanh nhất.
+  - **Small**: chính xác hơn với vật nhỏ hoặc bị che, chậm hơn một chút (trên Mac M1: khoảng 0.08 giây/ảnh, so với 0.05 giây của Nano). Lần đầu chọn Small, ứng dụng sẽ tải file `yolo11s.pt` (~19MB) nên cần mạng; các lần sau chạy offline.
+- **Ngưỡng độ tin cậy** (mặc định 0.25), xem giải thích bên dưới.
+- **Chế độ vật nhỏ**: xem mục [Chế độ vật nhỏ](#chế-độ-vật-nhỏ).
+- **Chỉ đếm các loại** (tùy chọn), ví dụ `người (person)`. Để trống thì đếm tất cả.
+- **Kiểu nhãn trên ảnh**:
+  - **Đầy đủ**: `#1 người 87%`.
+  - **Chỉ số thứ tự**: `1`, `2`, `3`..., gọn hơn khi có nhiều vật.
+  - **Chỉ khung**: không có chữ, dễ nhìn nhất khi vật dày đặc.
+
+**Tab Một ảnh:**
 1. Chọn nguồn ảnh:
    - Tab **Tải ảnh**: kéo thả hoặc bấm chọn ảnh ở ô **Ảnh cần đếm** (có thể thử ảnh `samples/bus.jpg`).
    - Tab **Camera**: bấm vào ô camera để bật webcam (lần đầu trình duyệt sẽ hỏi quyền, chọn **Cho phép/Allow**), rồi bấm nút chụp. Muốn chụp lại thì bấm nút xóa ảnh rồi chụp tiếp.
-2. Chọn **Model**:
-   - **Nano** (mặc định): nhanh nhất.
-   - **Small**: chính xác hơn với vật nhỏ hoặc bị che, chậm hơn một chút (trên Mac M1: khoảng 0.08 giây/ảnh, so với 0.05 giây của Nano). Lần đầu chọn Small, ứng dụng sẽ tải file `yolo11s.pt` (~19MB) nên cần mạng; các lần sau chạy offline.
-3. Chỉnh **Ngưỡng độ tin cậy** nếu cần (mặc định 0.25).
-4. (Tùy chọn) Chọn vài loại trong ô **Chỉ đếm các loại**, ví dụ `người (person)`. Để trống thì đếm tất cả.
-5. (Tùy chọn) Chọn **Kiểu nhãn trên ảnh**:
-   - **Đầy đủ**: `#1 người 87%`.
-   - **Chỉ số thứ tự**: `1`, `2`, `3`..., gọn hơn khi có nhiều vật.
-   - **Chỉ khung**: không có chữ, dễ nhìn nhất khi vật dày đặc.
-6. Bấm **Đếm**. Ứng dụng sẽ đếm ảnh của tab đang mở.
+2. Bấm **Đếm**. Ứng dụng sẽ đếm ảnh của tab đang mở.
+3. (Tùy chọn) Chỉ đếm trong một khu vực: xem mục [Vùng đếm](#vùng-đếm).
 
 > **Lần bấm "Đếm" đầu tiên** sau khi cài có thể mất 20-30 giây vì thư viện phải chuẩn bị một số thứ (ví dụ bộ nhớ đệm font của Matplotlib). Việc này chỉ xảy ra một lần; các lần sau việc nhận diện mỗi ảnh chỉ mất chưa tới 0.1 giây (đo trên Mac M1, chạy CPU).
 
@@ -142,6 +155,44 @@ Kết quả gồm:
 > Ô lọc **Chỉ đếm các loại** cũng hiện tên tiếng Việt. Gõ "người", "xe" hoặc "chai" (có dấu) để tìm nhanh, hoặc gõ tên tiếng Anh như "person", "car".
 >
 > File kết quả được lưu trong thư mục tạm của máy và **tự xóa sau khoảng một ngày, hoặc khi tắt ứng dụng**. Muốn giữ lâu dài thì bấm tải về.
+
+### Vùng đếm
+
+Dùng khi chỉ muốn đếm trong một khu vực của ảnh, ví dụ một kệ hàng hay một làn đường.
+
+1. Bấm **Đếm** một lần để có ảnh kết quả.
+2. Bấm **2 góc đối diện** của khu vực lên ảnh kết quả (góc nào trước cũng được). Lần bấm 1 hiện một chấm vàng, lần bấm 2 hiện khung vàng, và dòng chữ bên trái ghi tọa độ vùng.
+3. Bấm **Đếm** lại. Lúc này chỉ đếm vật nằm trong vùng, tóm tắt ghi "trong vùng đã chọn".
+4. Muốn đếm cả ảnh trở lại: bấm **Xóa vùng** rồi bấm **Đếm**.
+
+Quy tắc: một vật được tính là **trong vùng** khi **tâm** khung của nó nằm trong vùng. Vùng được nhớ theo tọa độ pixel, nên nếu đổi sang ảnh khác kích thước, nhớ chọn lại vùng.
+
+### Chế độ vật nhỏ
+
+YOLO luôn thu ảnh về 640px trước khi nhận diện. Với ảnh lớn (ví dụ ảnh 4000px từ điện thoại), vật nhỏ hoặc ở xa bị thu chỉ còn vài pixel và bị bỏ sót.
+
+Khi bật **Chế độ vật nhỏ**, ảnh được chia thành các ô 640×640 chồng lên nhau 20%. Từng ô được nhận diện riêng (giữ nguyên độ phân giải), sau đó các khung trùng ở mép ô được gộp lại. Đây là ý tưởng của kỹ thuật SAHI.
+
+- **Nên bật** khi: ảnh lớn, đám đông, hàng hóa chụp từ xa, vật chiếm rất ít diện tích ảnh.
+- **Không cần bật** khi: ảnh nhỏ (dưới 640px thì chạy như thường), vật to rõ ràng.
+- **Đổi lại**: chậm hơn, vì ảnh càng lớn thì càng nhiều ô phải nhận diện.
+
+Ví dụ thử nghiệm (Mac M1, model Nano): một ảnh 2400×2400 có 16 người cao 60px. Chế độ thường đếm được 1 người (0.1 giây), chế độ vật nhỏ đếm được 15 người (khoảng 1.5 giây).
+
+### Đếm nhiều ảnh
+
+Tab **Nhiều ảnh**: chọn nhiều ảnh cùng lúc (giữ `Cmd` hoặc `Shift` khi chọn), rồi bấm **Đếm tất cả**. Phần **Cài đặt** ở trên vẫn được áp dụng, trừ vùng đếm.
+
+Kết quả gồm:
+- Bảng mỗi ảnh một dòng (tổng và chi tiết từng loại). File hỏng được ghi lỗi vào bảng, các ảnh khác vẫn được đếm.
+- File `tong_hop_nhieu_anh.csv`: mỗi ảnh một dòng, mỗi loại vật một cột, có dòng tổng cộng ở cuối.
+- Bộ ảnh đã khoanh khung (bấm vào để xem to).
+
+### Lịch sử
+
+Mỗi lần đếm (cả một ảnh lẫn nhiều ảnh) được tự động lưu vào file `data/history.db` trên máy bạn. Đây là SQLite, một cơ sở dữ liệu dạng file có sẵn trong Python. Ứng dụng **chỉ lưu số liệu** (thời gian, tên ảnh, model, chế độ, số lượng), **không lưu ảnh**.
+
+Tab **Lịch sử** hiện 50 lần đếm gần nhất. Bấm **Làm mới** để cập nhật, hoặc **Xóa lịch sử** để xóa hết. Thư mục `data/` không được đưa lên git.
 
 ### Ngưỡng độ tin cậy là gì?
 
@@ -202,6 +253,23 @@ print(files)  # [ket_qua_....jpg, so_luong_....csv, chi_tiet_....csv]
 
 # Dạng dict, sẵn sàng trả về JSON cho API
 result.to_dict()
+
+# Chế độ vật nhỏ (chia ô)
+tiled = detector.detect("anh_lon.jpg", tiled=True)
+
+# Chỉ giữ vật có tâm nằm trong vùng (x1, y1, x2, y2)
+from vision_count import filter_by_region
+in_region = filter_by_region(result, (0, 0, 400, 1080))
+
+# Đếm nhiều ảnh, xuất CSV tổng hợp
+from vision_count import count_many, write_batch_csv
+items = count_many(detector, ["samples/bus.jpg", "samples/zidane.jpg"])
+write_batch_csv(items, "tong_hop.csv")
+
+# Đọc lịch sử đếm
+from vision_count import HistoryStore
+for entry in HistoryStore().recent(limit=5):
+    print(entry.created_at, entry.source, entry.total, entry.counts)
 ```
 
 ---

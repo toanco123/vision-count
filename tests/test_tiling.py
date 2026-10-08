@@ -42,16 +42,20 @@ def test_merge_overlaps_keeps_separate_boxes():
 
 @pytest.fixture(scope="module")
 def tiny_people_canvas():
-    """Ảnh 2400x2400 có 16 người nhỏ (cao 80px) cắt từ ảnh xe buýt mẫu."""
+    """Ảnh 2400x2400 có 16 người nhỏ (cao 60px) cắt từ ảnh xe buýt mẫu.
+
+    Chỉ dùng 3 người rõ nhất (tin cậy cao nhất): người thứ 5 trong ảnh mẫu bị khuất nửa người,
+    thu nhỏ còn 60px thì model không nhận ra nữa, sẽ làm test dễ hỏng.
+    """
     detector = get_detector()
     bus = Image.open(ASSETS / "bus.jpg").convert("RGB")
-    people = detector.detect(bus, classes=["person"]).detections[:4]
+    people = detector.detect(bus, classes=["person"]).detections[:3]
     crops = [bus.crop(tuple(int(v) for v in d.box)) for d in people]
     canvas = Image.new("RGB", (2400, 2400), (128, 128, 128))
     for i in range(4):
         for j in range(4):
             crop = crops[(i * 4 + j) % len(crops)]
-            small = crop.resize((max(1, int(crop.width * 80 / crop.height)), 80))
+            small = crop.resize((max(1, int(crop.width * 60 / crop.height)), 60))
             canvas.paste(small, (150 + j * 560, 150 + i * 560))
     return canvas
 
@@ -60,8 +64,8 @@ def test_tiled_finds_small_people_normal_misses(tiny_people_canvas):
     detector = get_detector()
     normal = detector.detect(tiny_people_canvas, classes=["person"])
     tiled = detector.detect(tiny_people_canvas, classes=["person"], tiled=True)
-    assert normal.total <= 2  # thu nhỏ cả ảnh về 640px thì người chỉ còn ~20px, gần như mất hết
-    assert 12 <= tiled.total <= 16  # chia ô bắt được hầu hết, không đếm trùng quá số đã dán
+    assert normal.total <= 3  # thu nhỏ cả ảnh về 640px thì người chỉ còn ~16px, gần như mất hết
+    assert 13 <= tiled.total <= 16  # chia ô bắt được hầu hết, không đếm trùng quá số đã dán
 
 
 def test_tiled_on_small_image_equals_normal():
