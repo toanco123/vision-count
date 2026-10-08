@@ -100,3 +100,8 @@ def test_draw_detections_keeps_size_and_original(detector):
     annotated = draw_detections(original, result.detections)
     assert annotated.size == original.size
     assert annotated is not original
+
+
+def test_load_image_error_uses_given_name():
+    with pytest.raises(InvalidImageError, match="anh_cua_toi.png"):
+        load_image(b"khong phai anh", name="anh_cua_toi.png")

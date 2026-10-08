@@ -30,6 +30,8 @@ vision-count/
 │   ├── batch.py            #   Đếm nhiều ảnh, xuất CSV tổng hợp
 │   ├── history.py          #   Lịch sử đếm (SQLite)
 │   └── video.py            #   Đếm video có tracking (không đếm trùng)
+├── api/
+│   └── main.py             # API FastAPI (cho app React/Flutter...), chỉ gọi tới vision_count
 ├── ui/
 │   ├── gradio_app.py       # Bố cục giao diện Gradio (3 tab) và nối sự kiện
 │   └── handlers.py         # Hàm xử lý khi bấm nút, chỉ gọi tới vision_count
@@ -299,7 +301,53 @@ print(video.counts, video.frames_processed)   # {'person': 3} 30
 
 ---
 
-## 6. Lỗi thường gặp
+## 6. API cho ứng dụng khác (FastAPI)
+
+Phần AI cũng được bọc thành **API** để app khác (web React, app điện thoại Flutter...) gửi ảnh/video lên và nhận kết quả dạng JSON. API dùng chung đúng phần AI với giao diện Gradio.
+
+Chạy API (trong một Terminal riêng, đã `source .venv/bin/activate`):
+
+```bash
+uvicorn api.main:app --port 8000
+```
+
+Mở **http://127.0.0.1:8000/docs** để xem và **thử từng API ngay trên trình duyệt** (bấm vào một API → **Try it out** → chọn file → **Execute**).
+
+| API | Việc |
+|---|---|
+| `GET /health` | Kiểm tra API đang chạy |
+| `GET /models` | Danh sách model (nano, small...) và đã tải về chưa |
+| `GET /classes?model=nano` | Các loại vật model nhận được, kèm tên tiếng Việt |
+| `POST /detect` | Gửi ảnh, nhận JSON: tổng, số lượng theo loại, từng khung |
+| `POST /detect/image` | Gửi ảnh, nhận lại ảnh JPEG đã khoanh khung |
+| `POST /video/count` | Gửi video, nhận số vật khác nhau (có tracking) |
+
+Các tham số gửi kèm (đều không bắt buộc): `model` (`nano`/`small`), `confidence` (0..1), `classes` (vd `person,car`), `tiled` (`true` = chế độ vật nhỏ), `region` (vùng đếm `x1,y1,x2,y2`), `label_style` (`full`/`number`/`none`, chỉ cho `/detect/image`), `vid_stride` (chỉ cho video).
+
+Ví dụ gọi bằng `curl` (chạy ở thư mục project):
+
+```bash
+curl -F "file=@samples/bus.jpg" http://127.0.0.1:8000/detect
+curl -F "file=@samples/bus.jpg" -F "classes=person" -F "region=0,0,400,1080" http://127.0.0.1:8000/detect
+curl -F "file=@samples/bus.jpg" -F "label_style=number" http://127.0.0.1:8000/detect/image -o ket_qua.jpg
+curl -F "file=@video.mp4" http://127.0.0.1:8000/video/count
+```
+
+Kết quả của `/detect` có dạng:
+
+```json
+{"model": "nano", "total": 5, "counts": {"person": 4, "bus": 1}, "counts_vi": {"người": 4, "xe buýt": 1},
+ "detections": [{"label": "bus", "label_vi": "xe buýt", "class_id": 5, "confidence": 0.9404, "box": [3.8, 229.4, 796.2, 728.3]}, ...],
+ "image_width": 810, "image_height": 1080, "region": null}
+```
+
+Khi gửi sai (file không phải ảnh, model/loại không có, vùng sai định dạng), API trả mã **400** kèm thông báo tiếng Việt trong `detail`. Ngưỡng ngoài 0..1 trả mã **422**.
+
+> API mặc định chỉ cho **chính máy bạn** gọi (127.0.0.1). Muốn điện thoại cùng Wi-Fi gọi được thì chạy `uvicorn api.main:app --host 0.0.0.0 --port 8000` và gọi bằng địa chỉ IP của máy. Khi đó **mọi máy cùng mạng** đều gọi được, nên chỉ làm vậy trong mạng tin cậy.
+
+---
+
+## 7. Lỗi thường gặp
 
 | Hiện tượng | Cách xử lý |
 |---|---|
@@ -314,9 +362,9 @@ print(video.counts, video.frames_processed)   # {'person': 3} 30
 
 ---
 
-## 7. Kế hoạch giai đoạn sau
+## 8. Kế hoạch giai đoạn sau
 
-### 7.1. Fine-tune khi model không nhận ra vật thể của bạn
+### 8.1. Fine-tune khi model không nhận ra vật thể của bạn
 
 Model pretrained chỉ biết 80 loại COCO. Với vật thể riêng (ốc vít, viên thuốc, cá giống, bao hàng...), cần dạy thêm cho model:
 
@@ -336,7 +384,7 @@ Model pretrained chỉ biết 80 loại COCO. Với vật thể riêng (ốc ví
 5. **Đánh giá**: xem chỉ số mAP và các ảnh kết quả trong thư mục `runs/detect/train/`.
 6. **Dùng model mới**: tải file `runs/detect/train/weights/best.pt` về, đặt vào `models/`, rồi thêm một dòng vào `AVAILABLE_MODELS` trong `vision_count/config.py`, ví dụ `"cua_toi": ("Model của tôi", "best.pt"),`. Model mới sẽ hiện trong ô **Model** trên giao diện. **Không phải sửa thêm dòng code nào khác.**
 
-### 7.2. Đếm trong video, có tracking để không đếm trùng
+### 8.2. Đếm trong video, có tracking để không đếm trùng
 
 - Trong video, cùng một vật xuất hiện ở nhiều khung hình. Nếu đếm từng khung hình rồi cộng lại thì sẽ bị trùng.
 - Giải pháp là **tracking**: gán cho mỗi vật một ID cố định qua các khung hình. Ultralytics có sẵn `model.track(source="video.mp4", persist=True, tracker="bytetrack.yaml")`.
@@ -345,7 +393,7 @@ Model pretrained chỉ biết 80 loại COCO. Với vật thể riêng (ốc ví
   - **Đếm khi vật đi qua một vạch/vùng**: phù hợp đếm xe qua cổng, người vào cửa. Ultralytics có sẵn `solutions.ObjectCounter`.
 - Dự kiến thêm `vision_count/video.py` với hàm `count_video(path) -> VideoCountResult`, và thêm một tab "Video" trong Gradio.
 
-### 7.3. Bọc thành API bằng FastAPI
+### 8.3. Bọc thành API bằng FastAPI
 
 - Thêm thư mục `api/` với file `api/main.py`, dùng lại nguyên `ObjectDetector`:
   - `POST /detect`: nhận file ảnh (multipart) cùng các tham số `confidence`, `classes`; trả về `result.to_dict()` dạng JSON.

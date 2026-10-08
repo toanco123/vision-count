@@ -56,9 +56,10 @@ class DetectionResult:
         return data
 
 
-def load_image(source: ImageInput) -> Image.Image:
+def load_image(source: ImageInput, name: str | None = None) -> Image.Image:
     """Đọc ảnh từ nhiều dạng đầu vào và trả về ảnh PIL hệ màu RGB.
 
+    name: tên hiển thị trong thông báo lỗi (vd tên file người dùng tải lên qua API).
     Ném InvalidImageError nếu đầu vào không phải ảnh hoặc ảnh bị hỏng.
     """
     if source is None:
@@ -78,10 +79,10 @@ def load_image(source: ImageInput) -> Image.Image:
         if not path.is_file():
             raise InvalidImageError(f"Không tìm thấy file: {path.name}")
         opener = lambda: Image.open(path)  # noqa: E731
-        name = path.name
+        name = name or path.name
     elif isinstance(source, bytes):
         opener = lambda: Image.open(io.BytesIO(source))  # noqa: E731
-        name = "dữ liệu tải lên"
+        name = name or "dữ liệu tải lên"
     else:
         raise InvalidImageError(f"Không hỗ trợ kiểu dữ liệu: {type(source).__name__}")
 
