@@ -110,8 +110,9 @@ def build_app() -> gr.Blocks:
         files = export_result(annotated, result, new_export_dir())
         return annotated, summary, counts_table, detail_table, [str(p) for p in files]
 
-    # delete_cache: Gradio tự xóa bản sao file cũ hơn 1 giờ (kiểm tra mỗi giờ)
-    with gr.Blocks(title="vision-count", delete_cache=(3600, 3600)) as app:
+    # delete_cache: mỗi giờ Gradio xóa các file cũ hơn 1 ngày mà nó đã lưu, gồm bản sao file tải về
+    # VÀ ảnh người dùng đã tải lên. Đặt 1 ngày (không phải 1 giờ) để ảnh không biến mất khi tab vẫn mở.
+    with gr.Blocks(title="vision-count", delete_cache=(3600, 86400)) as app:
         gr.Markdown(
             "# vision-count: đếm vật thể trong ảnh\n"
             "Tải ảnh lên hoặc chụp bằng camera, chọn ngưỡng độ tin cậy rồi bấm **Đếm**. "

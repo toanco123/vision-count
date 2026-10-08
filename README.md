@@ -141,7 +141,7 @@ Kết quả gồm:
 
 > Ô lọc **Chỉ đếm các loại** cũng hiện tên tiếng Việt. Gõ "người", "xe" hoặc "chai" (có dấu) để tìm nhanh, hoặc gõ tên tiếng Anh như "person", "car".
 >
-> File tải về được lưu tạm trong thư mục tạm của máy và **tự xóa sau khoảng 1 giờ**. Muốn giữ thì bấm tải về.
+> File kết quả được lưu trong thư mục tạm của máy và **tự xóa sau khoảng một ngày, hoặc khi tắt ứng dụng**. Muốn giữ lâu dài thì bấm tải về.
 
 ### Ngưỡng độ tin cậy là gì?
 

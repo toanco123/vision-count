@@ -8,11 +8,17 @@ from vision_count import config
 from vision_count.detector import ObjectDetector
 
 
-@lru_cache(maxsize=None)
 def get_detector(model_key: str = config.DEFAULT_MODEL_KEY) -> ObjectDetector:
     """Trả về detector của model được chọn. Mỗi model chỉ nạp một lần."""
     if model_key not in config.AVAILABLE_MODELS:
         raise ValueError(f"Không có model '{model_key}'. Chọn một trong: {', '.join(config.AVAILABLE_MODELS)}")
+    return _load_detector(model_key)
+
+
+# Cache tách riêng và chỉ nhận khóa dạng chuỗi: nếu đặt lru_cache thẳng lên get_detector thì
+# get_detector() và get_detector("nano") bị coi là 2 khóa khác nhau, model bị nạp 2 lần.
+@lru_cache(maxsize=None)
+def _load_detector(model_key: str) -> ObjectDetector:
     _, weights = config.AVAILABLE_MODELS[model_key]
     return ObjectDetector(weights)
 

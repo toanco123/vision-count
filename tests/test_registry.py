@@ -30,3 +30,8 @@ def test_is_model_downloaded():
 
 def test_default_key_is_in_available_models():
     assert config.DEFAULT_MODEL_KEY in config.AVAILABLE_MODELS
+
+
+def test_default_key_shares_cache_with_explicit_key():
+    # get_detector() và get_detector("nano") phải là cùng một model, không nạp 2 lần
+    assert get_detector() is get_detector("nano") is get_detector(model_key="nano")

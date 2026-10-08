@@ -68,3 +68,9 @@ def test_new_export_dir_removes_old_folders(tmp_path):
     assert not old.exists()
     assert recent.exists()
     assert created.parent == tmp_path and created.is_dir()
+
+
+def test_uploaded_files_are_kept_for_a_day():
+    # Gradio xóa cả ảnh người dùng đã tải lên theo delete_cache; 1 giờ là quá ngắn khi tab vẫn mở
+    _, max_age = build_app().delete_cache
+    assert max_age >= 86400
