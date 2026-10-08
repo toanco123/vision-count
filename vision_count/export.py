@@ -42,18 +42,19 @@ def export_result(
 
     count_rows = [[vi_label(label), label, n] for label, n in result.counts.items()]
     count_rows.append(["Tổng cộng", "", result.total])
-    _write_csv(counts_path, COUNT_HEADER, count_rows)
+    write_csv(counts_path, COUNT_HEADER, count_rows)
 
     detail_rows = [
         [i, vi_label(d.label), d.label, d.confidence, *d.box]
         for i, d in enumerate(result.detections, start=1)
     ]
-    _write_csv(detail_path, DETAIL_HEADER, detail_rows)
+    write_csv(detail_path, DETAIL_HEADER, detail_rows)
 
     return [image_path, counts_path, detail_path]
 
 
-def _write_csv(path: Path, header: list[str], rows: list[list]) -> None:
+def write_csv(path: Path, header: list[str], rows: list[list]) -> None:
+    """Ghi CSV bằng utf-8-sig (có BOM) để Excel mở không lỗi dấu tiếng Việt."""
     with open(path, "w", encoding="utf-8-sig", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(header)

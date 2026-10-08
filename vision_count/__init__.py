@@ -14,6 +14,7 @@ from vision_count.detector import (
     ObjectDetector,
     load_image,
 )
+from vision_count.batch import BatchItem, count_many, write_batch_csv
 from vision_count.drawing import (
     LABEL_FULL,
     LABEL_NONE,
@@ -32,11 +33,13 @@ __all__ = [
     "LABEL_NONE",
     "LABEL_NUMBER",
     "LABEL_STYLES",
+    "BatchItem",
     "Detection",
     "DetectionResult",
     "InvalidImageError",
     "ObjectDetector",
     "Region",
+    "count_many",
     "display_label",
     "draw_detections",
     "draw_region",
@@ -47,4 +50,5 @@ __all__ = [
     "load_image",
     "normalize_region",
     "vi_label",
+    "write_batch_csv",
 ]
