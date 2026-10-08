@@ -22,6 +22,7 @@ vision-count/
 │   ├── config.py           #   Cấu hình: tên model, ngưỡng mặc định...
 │   ├── detector.py         #   Đọc ảnh, chạy YOLO, trả về khung + số đếm
 │   ├── drawing.py          #   Vẽ khung và nhãn lên ảnh
+│   ├── registry.py         #   Chọn model nano/small, mỗi model chỉ nạp một lần
 │   ├── labels_vi.py        #   Bảng dịch tên 80 loại vật sang tiếng Việt
 │   └── export.py           #   Xuất kết quả ra ảnh JPG + file CSV
 ├── ui/
@@ -112,9 +113,16 @@ Muốn tắt ứng dụng: quay lại Terminal và bấm `Ctrl + C`.
 1. Chọn nguồn ảnh:
    - Tab **Tải ảnh**: kéo thả hoặc bấm chọn ảnh ở ô **Ảnh cần đếm** (có thể thử ảnh `samples/bus.jpg`).
    - Tab **Camera**: bấm vào ô camera để bật webcam (lần đầu trình duyệt sẽ hỏi quyền, chọn **Cho phép/Allow**), rồi bấm nút chụp. Muốn chụp lại thì bấm nút xóa ảnh rồi chụp tiếp.
-2. Chỉnh **Ngưỡng độ tin cậy** nếu cần (mặc định 0.25).
-3. (Tùy chọn) Chọn vài loại trong ô **Chỉ đếm các loại**, ví dụ `person`, `car`. Để trống thì đếm tất cả.
-4. Bấm **Đếm**. Ứng dụng sẽ đếm ảnh của tab đang mở.
+2. Chọn **Model**:
+   - **Nano** (mặc định): nhanh nhất.
+   - **Small**: chính xác hơn với vật nhỏ hoặc bị che, chậm hơn một chút (trên Mac M1: khoảng 0.08 giây/ảnh, so với 0.05 giây của Nano). Lần đầu chọn Small, ứng dụng sẽ tải file `yolo11s.pt` (~19MB) nên cần mạng; các lần sau chạy offline.
+3. Chỉnh **Ngưỡng độ tin cậy** nếu cần (mặc định 0.25).
+4. (Tùy chọn) Chọn vài loại trong ô **Chỉ đếm các loại**, ví dụ `người (person)`. Để trống thì đếm tất cả.
+5. (Tùy chọn) Chọn **Kiểu nhãn trên ảnh**:
+   - **Đầy đủ**: `#1 người 87%`.
+   - **Chỉ số thứ tự**: `1`, `2`, `3`..., gọn hơn khi có nhiều vật.
+   - **Chỉ khung**: không có chữ, dễ nhìn nhất khi vật dày đặc.
+6. Bấm **Đếm**. Ứng dụng sẽ đếm ảnh của tab đang mở.
 
 > **Lần bấm "Đếm" đầu tiên** sau khi cài có thể mất 20-30 giây vì thư viện phải chuẩn bị một số thứ (ví dụ bộ nhớ đệm font của Matplotlib). Việc này chỉ xảy ra một lần; các lần sau việc nhận diện mỗi ảnh chỉ mất chưa tới 0.1 giây (đo trên Mac M1, chạy CPU).
 
@@ -131,7 +139,9 @@ Kết quả gồm:
   File CSV mở trực tiếp bằng Excel, Numbers hoặc Google Sheets, không bị lỗi dấu tiếng Việt.
   Nếu Excel dồn hết dữ liệu vào **một cột** (thường gặp khi máy đặt định dạng vùng Việt Nam, vì Excel khi đó dùng dấu `;` để ngăn cột): mở Excel trống, vào **Data → From Text/CSV** (Dữ liệu → Từ văn bản/CSV), chọn file, ở mục **Delimiter** chọn **Comma** (dấu phẩy) rồi bấm **Load**.
 
-> Ô lọc **Chỉ đếm các loại** cũng hiện tên tiếng Việt. Gõ "người", "xe" hoặc "chai" để tìm nhanh.
+> Ô lọc **Chỉ đếm các loại** cũng hiện tên tiếng Việt. Gõ "người", "xe" hoặc "chai" (có dấu) để tìm nhanh, hoặc gõ tên tiếng Anh như "person", "car".
+>
+> File tải về được lưu tạm trong thư mục tạm của máy và **tự xóa sau khoảng 1 giờ**. Muốn giữ thì bấm tải về.
 
 ### Ngưỡng độ tin cậy là gì?
 
@@ -161,9 +171,10 @@ Test kiểm tra: từ chối file không phải ảnh, ảnh trống trả về 
 Không cần giao diện, bạn có thể gọi thẳng phần AI:
 
 ```python
-from vision_count import ObjectDetector, draw_detections, export_result, load_image, vi_label
+from vision_count import LABEL_NUMBER, draw_detections, export_result, get_detector, load_image, vi_label
 
-detector = ObjectDetector()                       # nạp model một lần
+detector = get_detector()                         # model nano, nạp một lần rồi giữ lại
+# detector = get_detector("small")                # hoặc model small, chính xác hơn
 result = detector.detect("samples/bus.jpg", confidence=0.3)
 
 print(result.total)      # tổng số vật, ví dụ: 5
@@ -181,6 +192,9 @@ print(vi_label("person"))  # người
 image = load_image("samples/bus.jpg")
 annotated = draw_detections(image, result.detections, label_fn=vi_label)
 annotated.save("ket_qua.jpg")
+
+# Kiểu nhãn gọn: chỉ số thứ tự (hoặc LABEL_NONE: chỉ khung)
+draw_detections(image, result.detections, label_style=LABEL_NUMBER).save("ket_qua_gon.jpg")
 
 # Xuất ảnh + 2 file CSV vào thư mục "ket_qua/"
 files = export_result(annotated, result, "ket_qua")
@@ -202,6 +216,7 @@ result.to_dict()
 | "Không tìm thấy vật thể nào" | Giảm ngưỡng độ tin cậy, bỏ bộ lọc loại vật, hoặc thử ảnh rõ hơn. Nếu vật không thuộc 80 loại COCO thì xem mục fine-tune bên dưới. |
 | Lần chạy đầu báo lỗi tải model | Cần mạng ở lần đầu để tải `yolo11n.pt`. Hoặc tự tải file về rồi đặt vào thư mục `models/`. |
 | Tab Camera không hiện hình / không hỏi quyền | Trình duyệt chỉ cho dùng camera khi mở bằng `http://127.0.0.1:7860` hoặc `http://localhost:7860` (hoặc `https`). Nếu đã lỡ bấm **Chặn**, bấm biểu tượng ổ khóa cạnh thanh địa chỉ để cấp lại quyền camera. Trên macOS còn cần bật quyền tại **System Settings → Privacy & Security → Camera** cho trình duyệt. |
+| "Không nạp được model Small" | Lần đầu chọn Small cần mạng để tải `yolo11s.pt`. Kết nối mạng rồi thử lại, hoặc tự tải file `yolo11s.pt` từ trang Ultralytics và đặt vào thư mục `models/`. |
 | `Address already in use` (cổng 7860 đang bận) | Ứng dụng đang chạy ở một Terminal khác. Tắt nó đi, hoặc đổi `server_port` trong `app.py`. |
 
 ---
@@ -226,7 +241,7 @@ Model pretrained chỉ biết 80 loại COCO. Với vật thể riêng (ốc ví
    model.train(data="data.yaml", epochs=100, imgsz=640)
    ```
 5. **Đánh giá**: xem chỉ số mAP và các ảnh kết quả trong thư mục `runs/detect/train/`.
-6. **Dùng model mới**: tải file `runs/detect/train/weights/best.pt` về, đặt vào `models/`, rồi sửa `DEFAULT_MODEL = "best.pt"` trong `vision_count/config.py`. **Không phải sửa thêm dòng code nào khác.**
+6. **Dùng model mới**: tải file `runs/detect/train/weights/best.pt` về, đặt vào `models/`, rồi thêm một dòng vào `AVAILABLE_MODELS` trong `vision_count/config.py`, ví dụ `"cua_toi": ("Model của tôi", "best.pt"),`. Model mới sẽ hiện trong ô **Model** trên giao diện. **Không phải sửa thêm dòng code nào khác.**
 
 ### 7.2. Đếm trong video, có tracking để không đếm trùng
 

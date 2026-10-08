@@ -2,18 +2,25 @@
 
 from __future__ import annotations
 
+import shutil
 import tempfile
+import time
+from pathlib import Path
 
 import gradio as gr
 import pandas as pd
 
 from vision_count import (
+    LABEL_FULL,
+    LABEL_NONE,
+    LABEL_NUMBER,
     InvalidImageError,
-    ObjectDetector,
     config,
     display_label,
     draw_detections,
     export_result,
+    get_detector,
+    is_model_downloaded,
     load_image,
     vi_label,
 )
@@ -25,11 +32,31 @@ DETAIL_COLUMNS = ["#", "Loại vật thể", "Độ tin cậy", "Khung (x1, y1, 
 SOURCE_UPLOAD = "upload"
 SOURCE_WEBCAM = "webcam"
 
+# Các kiểu nhãn cho người dùng chọn: (chữ hiển thị, giá trị)
+LABEL_STYLE_CHOICES = [
+    ("Đầy đủ: #1 người 87%", LABEL_FULL),
+    ("Chỉ số thứ tự", LABEL_NUMBER),
+    ("Chỉ khung", LABEL_NONE),
+]
 
-def build_app(detector: ObjectDetector) -> gr.Blocks:
-    """Tạo giao diện, nhận vào một detector đã nạp sẵn model."""
+# Thư mục chứa file tải về của mọi lần đếm; thư mục con cũ hơn 1 giờ sẽ bị xóa
+EXPORT_ROOT = Path(tempfile.gettempdir()) / "vision_count"
 
-    def count_objects(source_mode, image_path, webcam_image, confidence, selected_classes):
+
+def new_export_dir(root: Path = EXPORT_ROOT, max_age_seconds: int = 3600) -> Path:
+    """Tạo thư mục mới cho lần đếm này, đồng thời xóa các thư mục cũ để không đầy ổ đĩa."""
+    root.mkdir(parents=True, exist_ok=True)
+    cutoff = time.time() - max_age_seconds
+    for child in root.iterdir():
+        if child.is_dir() and child.stat().st_mtime < cutoff:
+            shutil.rmtree(child, ignore_errors=True)
+    return Path(tempfile.mkdtemp(dir=root))
+
+
+def build_app() -> gr.Blocks:
+    """Tạo giao diện. Model được nạp qua get_detector (mỗi model một lần)."""
+
+    def count_objects(source_mode, image_path, webcam_image, model_key, confidence, selected_classes, label_style):
         """Hàm được gọi khi bấm nút 'Đếm'. Trả về 5 giá trị cho 5 ô kết quả.
 
         source_mode cho biết người dùng đang ở tab nào: "upload" hoặc "webcam".
@@ -43,23 +70,31 @@ def build_app(detector: ObjectDetector) -> gr.Blocks:
             if not source:
                 raise gr.Error("Vui lòng tải một ảnh lên trước.")
 
+        model_name = config.AVAILABLE_MODELS.get(model_key, (model_key,))[0]
+        if not is_model_downloaded(model_key):
+            gr.Info(f"Đang tải model {model_name} lần đầu, vui lòng chờ...")
+
         try:
+            detector = get_detector(model_key)
             image = load_image(source)
             result = detector.detect(image, confidence=confidence, classes=selected_classes or None)
         except (InvalidImageError, ValueError) as exc:
             # gr.Error hiện thông báo lỗi màu đỏ trên giao diện thay vì làm sập app
             raise gr.Error(str(exc)) from exc
+        except Exception as exc:  # Ví dụ: tải model thất bại vì mất mạng
+            raise gr.Error(f"Không nạp được model {model_name}: {exc}") from exc
 
-        annotated = draw_detections(image, result.detections, label_fn=vi_label)
+        annotated = draw_detections(image, result.detections, label_fn=vi_label, label_style=label_style)
 
         if result.total == 0:
             summary = (
                 "### Không tìm thấy vật thể nào\n"
                 "Thử **giảm ngưỡng độ tin cậy**, bỏ bớt bộ lọc loại vật, hoặc dùng ảnh rõ hơn. "
                 "Nếu vật bạn cần đếm không nằm trong 80 loại COCO, cần fine-tune model (giai đoạn sau)."
+                f"\n\n_Model: {model_name}_"
             )
         else:
-            summary = f"### Tổng cộng: {result.total} vật thể ({len(result.counts)} loại)"
+            summary = f"### Tổng cộng: {result.total} vật thể ({len(result.counts)} loại)\n_Model: {model_name}_"
 
         counts_table = pd.DataFrame(
             [[display_label(label), n] for label, n in result.counts.items()], columns=COUNT_COLUMNS
@@ -71,11 +106,12 @@ def build_app(detector: ObjectDetector) -> gr.Blocks:
             ],
             columns=DETAIL_COLUMNS,
         )
-        # Mỗi lần đếm ghi vào một thư mục tạm riêng, để không ghi đè file của lần trước
-        files = export_result(annotated, result, tempfile.mkdtemp(prefix="vision_count_"))
+        # Mỗi lần đếm ghi vào một thư mục riêng, để không ghi đè file của lần trước
+        files = export_result(annotated, result, new_export_dir())
         return annotated, summary, counts_table, detail_table, [str(p) for p in files]
 
-    with gr.Blocks(title="vision-count") as app:
+    # delete_cache: Gradio tự xóa bản sao file cũ hơn 1 giờ (kiểm tra mỗi giờ)
+    with gr.Blocks(title="vision-count", delete_cache=(3600, 3600)) as app:
         gr.Markdown(
             "# vision-count: đếm vật thể trong ảnh\n"
             "Tải ảnh lên hoặc chụp bằng camera, chọn ngưỡng độ tin cậy rồi bấm **Đếm**. "
@@ -101,6 +137,12 @@ def build_app(detector: ObjectDetector) -> gr.Blocks:
                 upload_tab.select(fn=lambda: SOURCE_UPLOAD, outputs=source_mode)
                 webcam_tab.select(fn=lambda: SOURCE_WEBCAM, outputs=source_mode)
 
+                model_input = gr.Dropdown(
+                    choices=[(label, key) for key, (label, _) in config.AVAILABLE_MODELS.items()],
+                    value=config.DEFAULT_MODEL_KEY,
+                    label="Model",
+                    info="Small chính xác hơn với vật nhỏ/bị che. Lần đầu chọn sẽ tải file (~19MB).",
+                )
                 confidence_input = gr.Slider(
                     minimum=0.05,
                     maximum=0.95,
@@ -111,9 +153,15 @@ def build_app(detector: ObjectDetector) -> gr.Blocks:
                 )
                 class_input = gr.Dropdown(
                     # (chữ hiển thị, giá trị gửi về): hiện "người (person)" nhưng gửi về "person"
-                    choices=[(display_label(name), name) for name in detector.class_names],
+                    choices=[(display_label(name), name) for name in get_detector().class_names],
                     multiselect=True,
                     label="Chỉ đếm các loại (để trống = đếm tất cả)",
+                )
+                label_style_input = gr.Radio(
+                    choices=LABEL_STYLE_CHOICES,
+                    value=LABEL_FULL,
+                    label="Kiểu nhãn trên ảnh",
+                    info="Khi có nhiều vật, chọn kiểu gọn để nhãn không đè lên nhau.",
                 )
                 run_button = gr.Button("Đếm", variant="primary")
 
@@ -130,7 +178,15 @@ def build_app(detector: ObjectDetector) -> gr.Blocks:
 
         run_button.click(
             fn=count_objects,
-            inputs=[source_mode, image_input, webcam_input, confidence_input, class_input],
+            inputs=[
+                source_mode,
+                image_input,
+                webcam_input,
+                model_input,
+                confidence_input,
+                class_input,
+                label_style_input,
+            ],
             outputs=[image_output, summary_output, counts_output, detail_output, download_output],
         )
 
