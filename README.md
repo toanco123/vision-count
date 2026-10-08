@@ -21,11 +21,13 @@ vision-count/
 ├── vision_count/           # ⭐ PHẦN AI, không phụ thuộc giao diện
 │   ├── config.py           #   Cấu hình: tên model, ngưỡng mặc định...
 │   ├── detector.py         #   Đọc ảnh, chạy YOLO, trả về khung + số đếm
-│   └── drawing.py          #   Vẽ khung và nhãn lên ảnh
+│   ├── drawing.py          #   Vẽ khung và nhãn lên ảnh
+│   ├── labels_vi.py        #   Bảng dịch tên 80 loại vật sang tiếng Việt
+│   └── export.py           #   Xuất kết quả ra ảnh JPG + file CSV
 ├── ui/
 │   └── gradio_app.py       # Giao diện Gradio, chỉ gọi tới vision_count
-├── tests/
-│   └── test_detector.py    # Test tự động cho phần AI
+├── tests/                  # Test tự động (pytest)
+├── documents/              # Kế hoạch triển khai các tính năng
 ├── models/                 # Nơi lưu file model (tự tải về lần đầu)
 └── samples/                # Ảnh mẫu để thử
 ```
@@ -117,10 +119,18 @@ Muốn tắt ứng dụng: quay lại Terminal và bấm `Ctrl + C`.
 > **Lần bấm "Đếm" đầu tiên** sau khi cài có thể mất 20-30 giây vì thư viện phải chuẩn bị một số thứ (ví dụ bộ nhớ đệm font của Matplotlib). Việc này chỉ xảy ra một lần; các lần sau việc nhận diện mỗi ảnh chỉ mất chưa tới 0.1 giây (đo trên Mac M1, chạy CPU).
 
 Kết quả gồm:
-- Ảnh đã khoanh khung, mỗi khung có nhãn dạng `#1 person 87%` (số thứ tự, tên loại, độ tin cậy).
+- Ảnh đã khoanh khung, mỗi khung có nhãn tiếng Việt dạng `#1 người 87%` (số thứ tự, tên loại, độ tin cậy).
 - Tổng số vật thể.
-- Bảng số lượng theo từng loại.
+- Bảng số lượng theo từng loại, tên hiện dạng `người (person)`: tiếng Việt kèm tên gốc của model.
 - Mục **Chi tiết từng khung** (bấm để mở) liệt kê độ tin cậy và tọa độ của từng khung.
+- Ô **Tải kết quả về** có 3 file, bấm vào tên file để tải:
+  - `ket_qua_<ngày>_<giờ>.jpg`: ảnh đã khoanh khung.
+  - `so_luong_<ngày>_<giờ>.csv`: số lượng theo loại, có dòng tổng cộng.
+  - `chi_tiet_<ngày>_<giờ>.csv`: từng khung với độ tin cậy và tọa độ.
+
+  File CSV mở trực tiếp bằng Excel, Numbers hoặc Google Sheets, không bị lỗi dấu tiếng Việt.
+
+> Ô lọc **Chỉ đếm các loại** cũng hiện tên tiếng Việt. Gõ "người", "xe" hoặc "chai" để tìm nhanh.
 
 ### Ngưỡng độ tin cậy là gì?
 
@@ -141,7 +151,7 @@ source .venv/bin/activate
 pytest -v
 ```
 
-Test kiểm tra: từ chối file không phải ảnh, ảnh trống trả về 0 vật thể, ảnh xe buýt mẫu đếm được người và xe buýt, bộ lọc loại vật, ngưỡng độ tin cậy...
+Test kiểm tra: từ chối file không phải ảnh, ảnh trống trả về 0 vật thể, ảnh xe buýt mẫu đếm được người và xe buýt, bộ lọc loại vật, ngưỡng độ tin cậy, bảng dịch tiếng Việt, file CSV xuất ra...
 
 ---
 
@@ -150,7 +160,7 @@ Test kiểm tra: từ chối file không phải ảnh, ảnh trống trả về 
 Không cần giao diện, bạn có thể gọi thẳng phần AI:
 
 ```python
-from vision_count import ObjectDetector, draw_detections, load_image
+from vision_count import ObjectDetector, draw_detections, export_result, load_image, vi_label
 
 detector = ObjectDetector()                       # nạp model một lần
 result = detector.detect("samples/bus.jpg", confidence=0.3)
@@ -163,9 +173,17 @@ for d in result.detections:
 # Chỉ đếm người
 only_people = detector.detect("samples/bus.jpg", classes=["person"])
 
-# Lưu ảnh đã khoanh khung
+# Tên tiếng Việt (model vẫn dùng tên tiếng Anh làm mã)
+print(vi_label("person"))  # người
+
+# Lưu ảnh đã khoanh khung, nhãn tiếng Việt (bỏ label_fn để giữ tên tiếng Anh)
 image = load_image("samples/bus.jpg")
-draw_detections(image, result.detections).save("ket_qua.jpg")
+annotated = draw_detections(image, result.detections, label_fn=vi_label)
+annotated.save("ket_qua.jpg")
+
+# Xuất ảnh + 2 file CSV vào thư mục "ket_qua/"
+files = export_result(annotated, result, "ket_qua")
+print(files)  # [ket_qua_....jpg, so_luong_....csv, chi_tiet_....csv]
 
 # Dạng dict, sẵn sàng trả về JSON cho API
 result.to_dict()
