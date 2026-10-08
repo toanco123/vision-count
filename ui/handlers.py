@@ -1,0 +1,243 @@
+"""Các hàm xử lý sự kiện của giao diện Gradio.
+
+Tách khỏi phần bố cục (gradio_app.py) để test được trực tiếp, không cần mở trình duyệt.
+"""
+
+from __future__ import annotations
+
+import shutil
+import tempfile
+import time
+from pathlib import Path
+
+import gradio as gr
+import pandas as pd
+
+from vision_count import (
+    LABEL_FULL,
+    LABEL_NONE,
+    LABEL_NUMBER,
+    HistoryStore,
+    InvalidImageError,
+    config,
+    count_many,
+    display_label,
+    draw_detections,
+    draw_region,
+    export_result,
+    filter_by_region,
+    get_detector,
+    is_model_downloaded,
+    load_image,
+    normalize_region,
+    vi_label,
+    write_batch_csv,
+)
+
+COUNT_COLUMNS = ["Loại vật thể", "Số lượng"]
+DETAIL_COLUMNS = ["#", "Loại vật thể", "Độ tin cậy", "Khung (x1, y1, x2, y2)"]
+BATCH_COLUMNS = ["Ảnh", "Tổng", "Chi tiết"]
+HISTORY_COLUMNS = ["Thời gian", "Nguồn", "Model", "Chế độ", "Tổng", "Chi tiết"]
+
+# Hai nguồn ảnh: tải file lên hoặc chụp từ camera
+SOURCE_UPLOAD = "upload"
+SOURCE_WEBCAM = "webcam"
+
+# Các kiểu nhãn cho người dùng chọn: (chữ hiển thị, giá trị)
+LABEL_STYLE_CHOICES = [
+    ("Đầy đủ: #1 người 87%", LABEL_FULL),
+    ("Chỉ số thứ tự", LABEL_NUMBER),
+    ("Chỉ khung", LABEL_NONE),
+]
+
+# Vùng đếm phải rộng/cao ít nhất 5px, tránh bấm 2 lần trùng một điểm tạo vùng rỗng
+MIN_REGION_SIZE = 5
+NO_REGION_TEXT = "Chưa chọn vùng: đếm cả ảnh. Muốn chỉ đếm một khu vực, bấm 2 góc lên ảnh kết quả."
+
+# Thư mục chứa file tải về của mọi lần đếm; thư mục con cũ hơn 1 giờ sẽ bị xóa
+EXPORT_ROOT = Path(tempfile.gettempdir()) / "vision_count"
+
+
+def new_export_dir(root: Path = EXPORT_ROOT, max_age_seconds: int = 3600) -> Path:
+    """Tạo thư mục mới cho lần đếm này, đồng thời xóa các thư mục cũ để không đầy ổ đĩa."""
+    root.mkdir(parents=True, exist_ok=True)
+    cutoff = time.time() - max_age_seconds
+    for child in root.iterdir():
+        if child.is_dir() and child.stat().st_mtime < cutoff:
+            shutil.rmtree(child, ignore_errors=True)
+    return Path(tempfile.mkdtemp(dir=root))
+
+
+def _model_name(model_key: str) -> str:
+    return config.AVAILABLE_MODELS.get(model_key, (model_key,))[0]
+
+
+def _load_model(model_key: str):
+    """Nạp model; lỗi (sai tên, mất mạng khi tải lần đầu) thành thông báo trên giao diện."""
+    if not is_model_downloaded(model_key):
+        gr.Info(f"Đang tải model {_model_name(model_key)} lần đầu, vui lòng chờ...")
+    try:
+        return get_detector(model_key)
+    except ValueError as exc:
+        raise gr.Error(str(exc)) from exc
+    except Exception as exc:  # Ví dụ: tải model thất bại vì mất mạng
+        raise gr.Error(f"Không nạp được model {_model_name(model_key)}: {exc}") from exc
+
+
+def _mode_text(tiled: bool, region) -> str:
+    """Mô tả chế độ để hiện trong tóm tắt và lưu vào lịch sử."""
+    parts = (["Vật nhỏ"] if tiled else []) + (["trong vùng đã chọn"] if region else [])
+    return ", ".join(parts) or "Thường"
+
+
+def _counts_text(counts: dict[str, int]) -> str:
+    return ", ".join(f"{vi_label(label)}: {n}" for label, n in counts.items()) or "không có"
+
+
+# ---------- Một ảnh ----------
+
+def count_single(
+    source_mode,
+    image_path,
+    webcam_image,
+    model_key,
+    confidence,
+    selected_classes,
+    label_style,
+    tiled,
+    region,
+    history: HistoryStore | None = None,
+):
+    """Nút 'Đếm' của tab Một ảnh. Trả về 5 giá trị cho 5 ô kết quả."""
+    if source_mode == SOURCE_WEBCAM:
+        source, source_name = webcam_image, "Camera"  # Ảnh chụp từ camera, dạng mảng numpy
+        if source is None:
+            raise gr.Error("Vui lòng chụp ảnh từ camera trước.")
+    else:
+        source = image_path  # Đường dẫn file đã tải lên
+        if not source:
+            raise gr.Error("Vui lòng tải một ảnh lên trước.")
+        source_name = Path(source).name
+
+    detector = _load_model(model_key)
+    try:
+        image = load_image(source)
+        result = detector.detect(image, confidence=confidence, classes=selected_classes or None, tiled=bool(tiled))
+    except (InvalidImageError, ValueError) as exc:
+        # gr.Error hiện thông báo lỗi màu đỏ trên giao diện thay vì làm sập app
+        raise gr.Error(str(exc)) from exc
+
+    result = filter_by_region(result, region)
+    annotated = draw_detections(image, result.detections, label_fn=vi_label, label_style=label_style, region=region)
+    mode = _mode_text(bool(tiled), region)
+
+    footer = f"_Model: {_model_name(model_key)} · Chế độ: {mode}_"
+    if result.total == 0:
+        hint = " Vùng đã chọn có thể không chứa vật nào: bấm **Xóa vùng** để đếm cả ảnh." if region else ""
+        summary = (
+            "### Không tìm thấy vật thể nào\n"
+            "Thử **giảm ngưỡng độ tin cậy**, bỏ bớt bộ lọc loại vật, hoặc dùng ảnh rõ hơn. "
+            "Nếu vật bạn cần đếm không nằm trong 80 loại COCO, cần fine-tune model (giai đoạn sau)."
+            f"{hint}\n\n{footer}"
+        )
+    else:
+        summary = f"### Tổng cộng: {result.total} vật thể ({len(result.counts)} loại)\n{footer}"
+
+    counts_table = pd.DataFrame(
+        [[display_label(label), n] for label, n in result.counts.items()], columns=COUNT_COLUMNS
+    )
+    detail_table = pd.DataFrame(
+        [
+            [i, display_label(d.label), f"{d.confidence:.0%}", ", ".join(f"{v:.0f}" for v in d.box)]
+            for i, d in enumerate(result.detections, start=1)
+        ],
+        columns=DETAIL_COLUMNS,
+    )
+    # Mỗi lần đếm ghi vào một thư mục riêng, để không ghi đè file của lần trước
+    files = export_result(annotated, result, new_export_dir())
+    if history is not None:
+        history.add(source_name, model_key, mode, result)
+    return annotated, summary, counts_table, detail_table, [str(p) for p in files]
+
+
+# ---------- Chọn vùng bằng 2 lần bấm lên ảnh kết quả ----------
+
+def add_region_point(image, points: list, region, xy):
+    """Xử lý một lần bấm lên ảnh kết quả. Lần 1 đánh dấu góc thứ nhất, lần 2 tạo vùng.
+
+    Trả về (ảnh xem trước, các điểm đang chờ, vùng, dòng hướng dẫn).
+    """
+    if image is None:
+        return None, [], region, "Hãy bấm **Đếm** một ảnh trước, rồi bấm 2 góc lên ảnh kết quả để chọn vùng."
+    x, y = (float(v) for v in xy)
+    if not points:
+        return draw_region(image, point=(x, y)), [(x, y)], region, f"Đã chọn góc 1 ({x:.0f}, {y:.0f}). Bấm điểm thứ 2."
+    new_region = normalize_region(points[0], (x, y))
+    if new_region[2] - new_region[0] < MIN_REGION_SIZE or new_region[3] - new_region[1] < MIN_REGION_SIZE:
+        return image, [], region, "Vùng quá nhỏ, hãy bấm lại 2 góc cách xa nhau hơn."
+    x1, y1, x2, y2 = new_region
+    info = f"Vùng đếm: ({x1:.0f}, {y1:.0f}) → ({x2:.0f}, {y2:.0f}). Bấm **Đếm** để chỉ đếm trong vùng này."
+    return draw_region(image, region=new_region), [], new_region, info
+
+
+def clear_region():
+    """Nút 'Xóa vùng': quay lại đếm cả ảnh. Trả về (vùng, các điểm, dòng hướng dẫn)."""
+    return None, [], NO_REGION_TEXT
+
+
+# ---------- Nhiều ảnh ----------
+
+def count_batch(
+    file_paths, model_key, confidence, selected_classes, label_style, tiled, history: HistoryStore | None = None
+):
+    """Nút 'Đếm tất cả' của tab Nhiều ảnh. Trả về (tóm tắt, bảng, gallery, file CSV)."""
+    if not file_paths:
+        raise gr.Error("Vui lòng chọn ít nhất một ảnh.")
+    detector = _load_model(model_key)
+    try:
+        items = count_many(
+            detector, file_paths, confidence=confidence, classes=selected_classes or None, tiled=bool(tiled)
+        )
+    except ValueError as exc:
+        raise gr.Error(str(exc)) from exc
+
+    mode = _mode_text(bool(tiled), None)
+    gallery, rows = [], []
+    for path, item in zip(file_paths, items):
+        if item.result is None:
+            rows.append([item.name, "", f"Lỗi: {item.error}"])
+            continue
+        rows.append([item.name, item.result.total, _counts_text(item.result.counts)])
+        annotated = draw_detections(
+            load_image(path), item.result.detections, label_fn=vi_label, label_style=label_style
+        )
+        gallery.append((annotated, f"{item.name}: {item.result.total}"))
+        if history is not None:
+            history.add(item.name, model_key, f"Nhiều ảnh, {mode}", item.result)
+
+    ok = [i for i in items if i.result]
+    errors = len(items) - len(ok)
+    summary = (
+        f"### {len(items)} ảnh, tổng cộng {sum(i.result.total for i in ok)} vật thể"
+        + (f" ({errors} lỗi)" if errors else "")
+        + f"\n_Model: {_model_name(model_key)} · Chế độ: {mode}_"
+    )
+    csv_path = write_batch_csv(items, new_export_dir() / "tong_hop_nhieu_anh.csv")
+    return summary, pd.DataFrame(rows, columns=BATCH_COLUMNS), gallery, str(csv_path)
+
+
+# ---------- Lịch sử ----------
+
+def history_table(history: HistoryStore, limit: int = 50) -> pd.DataFrame:
+    """Bảng các lần đếm gần nhất (mới nhất trước)."""
+    rows = [
+        [e.created_at, e.source, _model_name(e.model_key), e.mode, e.total, _counts_text(e.counts)]
+        for e in history.recent(limit)
+    ]
+    return pd.DataFrame(rows, columns=HISTORY_COLUMNS)
+
+
+def clear_history(history: HistoryStore) -> pd.DataFrame:
+    """Nút 'Xóa lịch sử'."""
+    history.clear()
+    return history_table(history)
