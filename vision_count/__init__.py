@@ -14,12 +14,16 @@ from vision_count.detector import (
     ObjectDetector,
     load_image,
 )
-from vision_count.drawing import draw_detections
+from vision_count.drawing import LABEL_FULL, LABEL_NONE, LABEL_NUMBER, LABEL_STYLES, draw_detections
 from vision_count.export import export_result
 from vision_count.labels_vi import display_label, vi_label
 from vision_count.registry import get_detector, is_model_downloaded
 
 __all__ = [
+    "LABEL_FULL",
+    "LABEL_NONE",
+    "LABEL_NUMBER",
+    "LABEL_STYLES",
     "Detection",
     "DetectionResult",
     "InvalidImageError",

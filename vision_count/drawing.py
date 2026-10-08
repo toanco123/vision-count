@@ -28,26 +28,46 @@ VIETNAMESE_FONTS = [
 ]
 
 
-@lru_cache(maxsize=16)
-def find_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    """Tìm font hỗ trợ tiếng Việt; không có thì dùng font mặc định (mất dấu nhưng không lỗi)."""
+@lru_cache(maxsize=1)
+def _find_font_name() -> str | None:
+    """Tìm (một lần) tên font hỗ trợ tiếng Việt có trên máy; không có thì trả về None."""
     for name in VIETNAMESE_FONTS:
         try:
-            return ImageFont.truetype(name, size)
+            ImageFont.truetype(name, 10)
+            return name
         except OSError:
             continue
-    return ImageFont.load_default(size=size)
+    return None
+
+
+@lru_cache(maxsize=16)
+def find_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    """Font hỗ trợ tiếng Việt ở cỡ chữ size; không có thì dùng font mặc định (mất dấu nhưng không lỗi)."""
+    name = _find_font_name()
+    return ImageFont.truetype(name, size) if name else ImageFont.load_default(size=size)
+
+
+# Kiểu nhãn trên ảnh. Khi vật dày đặc, nhãn đầy đủ sẽ đè lên nhau, nên có thêm 2 kiểu gọn.
+LABEL_FULL = "full"  # "#1 người 87%"
+LABEL_NUMBER = "number"  # "1"
+LABEL_NONE = "none"  # chỉ vẽ khung
+LABEL_STYLES = (LABEL_FULL, LABEL_NUMBER, LABEL_NONE)
 
 
 def draw_detections(
     image: Image.Image,
     detections: list[Detection],
     label_fn: Callable[[str], str] | None = None,
+    label_style: str = LABEL_FULL,
 ) -> Image.Image:
     """Trả về bản sao của ảnh, đã vẽ khung + số thứ tự + tên + độ tin cậy.
 
     label_fn: hàm đổi tên loại vật trước khi vẽ (vd vi_label để hiện tiếng Việt).
+    label_style: LABEL_FULL (đầy đủ), LABEL_NUMBER (chỉ số thứ tự) hoặc LABEL_NONE (chỉ khung).
     """
+    if label_style not in LABEL_STYLES:
+        raise ValueError(f"Kiểu nhãn không hợp lệ: {label_style}. Chọn một trong: {', '.join(LABEL_STYLES)}")
+
     annotated = image.convert("RGB").copy()  # Không sửa ảnh gốc
     draw = ImageDraw.Draw(annotated)
 
@@ -61,9 +81,14 @@ def draw_detections(
         x1, y1, x2, y2 = det.box
         draw.rectangle((x1, y1, x2, y2), outline=color, width=line_width)
 
-        # Nhãn dạng "#1 person 87%": số thứ tự giúp đối chiếu khi đếm bằng mắt
-        name = label_fn(det.label) if label_fn else det.label
-        text = f"#{index} {name} {det.confidence:.0%}"
+        if label_style == LABEL_NONE:
+            continue
+        if label_style == LABEL_NUMBER:
+            text = str(index)
+        else:
+            # Nhãn dạng "#1 người 87%": số thứ tự giúp đối chiếu khi đếm bằng mắt
+            name = label_fn(det.label) if label_fn else det.label
+            text = f"#{index} {name} {det.confidence:.0%}"
         left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
         text_w, text_h = right - left, bottom - top
         pad = max(2, line_width)
