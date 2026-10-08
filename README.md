@@ -129,6 +129,7 @@ Kết quả gồm:
   - `chi_tiet_<ngày>_<giờ>.csv`: từng khung với độ tin cậy và tọa độ.
 
   File CSV mở trực tiếp bằng Excel, Numbers hoặc Google Sheets, không bị lỗi dấu tiếng Việt.
+  Nếu Excel dồn hết dữ liệu vào **một cột** (thường gặp khi máy đặt định dạng vùng Việt Nam, vì Excel khi đó dùng dấu `;` để ngăn cột): mở Excel trống, vào **Data → From Text/CSV** (Dữ liệu → Từ văn bản/CSV), chọn file, ở mục **Delimiter** chọn **Comma** (dấu phẩy) rồi bấm **Load**.
 
 > Ô lọc **Chỉ đếm các loại** cũng hiện tên tiếng Việt. Gõ "người", "xe" hoặc "chai" để tìm nhanh.
 
