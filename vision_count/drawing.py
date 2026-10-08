@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
+from typing import Callable
+
 from PIL import Image, ImageDraw, ImageFont
 
 from vision_count.detector import Detection
@@ -14,16 +17,44 @@ PALETTE = [
     (132, 56, 255), (82, 0, 133), (203, 56, 255), (255, 149, 200), (255, 55, 199),
 ]
 
+# Font có đủ dấu tiếng Việt. Font mặc định của Pillow KHÔNG có, sẽ vẽ dấu thành ô vuông.
+# Pillow tự tìm các tên này trong thư mục font của hệ điều hành.
+VIETNAMESE_FONTS = [
+    "Arial.ttf",  # macOS, Windows
+    "arial.ttf",  # Windows (tên chữ thường)
+    "DejaVuSans.ttf",  # Linux
+    "LiberationSans-Regular.ttf",  # Linux
+    "NotoSans-Regular.ttf",  # Linux
+]
 
-def draw_detections(image: Image.Image, detections: list[Detection]) -> Image.Image:
-    """Trả về bản sao của ảnh, đã vẽ khung + số thứ tự + tên + độ tin cậy."""
+
+@lru_cache(maxsize=16)
+def find_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    """Tìm font hỗ trợ tiếng Việt; không có thì dùng font mặc định (mất dấu nhưng không lỗi)."""
+    for name in VIETNAMESE_FONTS:
+        try:
+            return ImageFont.truetype(name, size)
+        except OSError:
+            continue
+    return ImageFont.load_default(size=size)
+
+
+def draw_detections(
+    image: Image.Image,
+    detections: list[Detection],
+    label_fn: Callable[[str], str] | None = None,
+) -> Image.Image:
+    """Trả về bản sao của ảnh, đã vẽ khung + số thứ tự + tên + độ tin cậy.
+
+    label_fn: hàm đổi tên loại vật trước khi vẽ (vd vi_label để hiện tiếng Việt).
+    """
     annotated = image.convert("RGB").copy()  # Không sửa ảnh gốc
     draw = ImageDraw.Draw(annotated)
 
     # Độ dày nét và cỡ chữ tỉ lệ theo kích thước ảnh, để ảnh to hay nhỏ đều dễ nhìn
     scale = max(annotated.size) / 1000
     line_width = max(2, round(3 * scale))
-    font = ImageFont.load_default(size=max(12, round(18 * scale)))
+    font = find_font(max(12, round(18 * scale)))
 
     for index, det in enumerate(detections, start=1):
         color = PALETTE[det.class_id % len(PALETTE)]
@@ -31,7 +62,8 @@ def draw_detections(image: Image.Image, detections: list[Detection]) -> Image.Im
         draw.rectangle((x1, y1, x2, y2), outline=color, width=line_width)
 
         # Nhãn dạng "#1 person 87%": số thứ tự giúp đối chiếu khi đếm bằng mắt
-        text = f"#{index} {det.label} {det.confidence:.0%}"
+        name = label_fn(det.label) if label_fn else det.label
+        text = f"#{index} {name} {det.confidence:.0%}"
         left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
         text_w, text_h = right - left, bottom - top
         pad = max(2, line_width)
