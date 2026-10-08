@@ -1,0 +1,8 @@
+# Thư viện YOLO (tự kéo theo PyTorch, OpenCV, NumPy)
+ultralytics>=8.3.0
+# Giao diện web giai đoạn 1
+gradio>=5.0
+# Đọc và kiểm tra file ảnh
+pillow>=10.0
+# Chạy test
+pytest>=8.0
