@@ -45,7 +45,7 @@ vision-count/
 ├── api/
 │   └── main.py             # API FastAPI (cho app React/Flutter...), chỉ gọi tới vision_count
 ├── ui/
-│   ├── gradio_app.py       # Bố cục giao diện Gradio (3 tab) và nối sự kiện
+│   ├── gradio_app.py       # Bố cục giao diện Gradio (4 tab) và nối sự kiện
 │   └── handlers.py         # Hàm xử lý khi bấm nút, chỉ gọi tới vision_count
 ├── tests/                  # Test tự động (pytest)
 ├── training/               # Bộ công cụ fine-tune: hướng dẫn, data.yaml mẫu, notebook Colab
@@ -140,7 +140,7 @@ Giao diện có phần **Cài đặt** ở trên cùng (dùng chung) và 4 tab: 
   - **Small**: chính xác hơn với vật nhỏ hoặc bị che, chậm hơn một chút (trên Mac M1: khoảng 0.08 giây/ảnh, so với 0.05 giây của Nano). Lần đầu chọn Small, ứng dụng sẽ tải file `yolo11s.pt` (~19MB) nên cần mạng; các lần sau chạy offline.
 - **Ngưỡng độ tin cậy** (mặc định 0.25), xem giải thích bên dưới.
 - **Chế độ vật nhỏ**: xem mục [Chế độ vật nhỏ](#chế-độ-vật-nhỏ).
-- **Chỉ đếm các loại** (tùy chọn), ví dụ `người (person)`. Để trống thì đếm tất cả. Khi đổi **Model**, danh sách này tự đổi theo các loại model đó nhận được (quan trọng khi dùng model tự train), và các lựa chọn cũ bị xóa.
+- **Chỉ đếm các loại** (tùy chọn), ví dụ `người (person)`. Để trống thì đếm tất cả. Khi đổi **Model**, danh sách này tự đổi theo các loại model đó nhận được (quan trọng khi dùng model tự train); các loại đang chọn mà model mới cũng có thì được giữ lại.
 - **Kiểu nhãn trên ảnh**:
   - **Đầy đủ**: `#1 người 87%`.
   - **Chỉ số thứ tự**: `1`, `2`, `3`..., gọn hơn khi có nhiều vật.
@@ -217,7 +217,7 @@ Kết quả gồm:
 - File CSV số lượng.
 
 Lưu ý:
-- Một ID phải xuất hiện ít nhất **3 khung hình** mới được đếm, để bỏ các nhận diện chập chờn.
+- Một ID phải xuất hiện ít nhất **3 khung hình** mới được đếm, để bỏ các nhận diện chập chờn. Khi bỏ bớt khung (thanh trượt bên dưới), số này giảm theo, nhưng tối thiểu vẫn là 2 khung đã xử lý.
 - **Tốc độ** (Mac M1, model Nano): khoảng 35-45 ms mỗi khung hình. Video 1 phút ở 30 fps (1800 khung) mất khoảng 1-1.5 phút. Thanh tiến độ hiện số khung đã xử lý.
 - Thanh trượt **Xử lý 1 trên N khung hình**: đặt 2 hoặc 3 để chạy nhanh gấp 2-3 lần với video dài. Đổi lại, tracking dễ mất dấu vật di chuyển nhanh.
 - **Giới hạn của tracking**: vật bị che khuất lâu, hoặc đi ra khỏi khung rồi quay lại, có thể bị cấp ID mới và **bị đếm thêm lần nữa**. Khi nhiều vật đè lên nhau nhiều, ID cũng dễ bị đổi. Hợp nhất với camera cố định, vật đi qua rõ ràng.

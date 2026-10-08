@@ -27,11 +27,11 @@ def build_app(history: HistoryStore | None = None) -> gr.Blocks:
     # VÀ ảnh người dùng đã tải lên. Đặt 1 ngày (không phải 1 giờ) để ảnh không biến mất khi tab vẫn mở.
     with gr.Blocks(title="vision-count", delete_cache=(3600, 86400)) as app:
         gr.Markdown(
-            "# vision-count: đếm vật thể trong ảnh\n"
+            "# vision-count: đếm vật thể trong ảnh và video\n"
             "Model nhận được 80 loại vật thông dụng (người, xe, chó, mèo, chai, cốc...)."
         )
 
-        # ---------- Cài đặt dùng chung cho tab Một ảnh và Nhiều ảnh ----------
+        # ---------- Cài đặt dùng chung cho tab Một ảnh, Nhiều ảnh và Video ----------
         with gr.Accordion("Cài đặt", open=True):
             with gr.Row():
                 model_input = gr.Dropdown(
@@ -207,7 +207,7 @@ def build_app(history: HistoryStore | None = None) -> gr.Blocks:
             outputs=[video_summary, video_table, video_output, video_download],
         )
         # Đổi model thì ô lọc đổi theo các loại của model đó (quan trọng với model fine-tune)
-        model_input.change(fn=handlers.class_choices, inputs=model_input, outputs=class_input)
+        model_input.change(fn=handlers.class_choices, inputs=[model_input, class_input], outputs=class_input)
 
         def show_history():
             return handlers.history_table(history)

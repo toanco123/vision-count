@@ -241,7 +241,7 @@ def test_count_video_file_bad_video_raises(tmp_path):
 # ---------- Ô lọc đổi theo model ----------
 
 def test_class_choices_follow_model():
-    update = handlers.class_choices("small")
+    update = handlers.class_choices("small", [])
     assert update["choices"][0] == ("người (person)", "person")
     assert len(update["choices"]) == 80
     assert update["value"] == []
@@ -255,3 +255,19 @@ def test_new_export_dir_keeps_folder_with_recent_file(tmp_path):
     os.utime(busy, (two_hours_ago, two_hours_ago))  # thư mục tạo từ lâu
     handlers.new_export_dir(root=tmp_path, max_age_seconds=3600)
     assert busy.exists()
+
+
+def test_class_choices_keep_common_selection():
+    update = handlers.class_choices("small", ["person", "khong_co_o_model_nay"])
+    assert update["value"] == ["person"]
+
+
+def test_class_choices_without_selection():
+    assert handlers.class_choices("small")["value"] == []
+
+
+def test_no_result_hint_points_to_training_guide():
+    path = Path(handlers.new_export_dir()) / "trang.png"
+    Image.new("RGB", (320, 240), "white").save(path)
+    _, summary, *_ = handlers.count_single(SOURCE_UPLOAD, str(path), None, "nano", 0.25, [], LABEL_FULL, False, None, None)
+    assert "training/README.md" in summary and "giai đoạn sau" not in summary

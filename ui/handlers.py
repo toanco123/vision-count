@@ -158,7 +158,8 @@ def count_single(
         summary = (
             "### Không tìm thấy vật thể nào\n"
             "Thử **giảm ngưỡng độ tin cậy**, bỏ bớt bộ lọc loại vật, hoặc dùng ảnh rõ hơn. "
-            "Nếu vật bạn cần đếm không nằm trong 80 loại COCO, cần fine-tune model (giai đoạn sau)."
+            "Nếu vật bạn cần đếm không nằm trong 80 loại có sẵn, xem cách tự train model trong "
+            "`training/README.md`."
             f"{hint}\n\n{footer}"
         )
     else:
@@ -252,10 +253,16 @@ def count_batch(
 
 # ---------- Ô lọc theo model ----------
 
-def class_choices(model_key):
-    """Đổi model thì cập nhật ô 'Chỉ đếm các loại' theo các loại model đó nhận được (vd model fine-tune)."""
-    detector = _load_model(model_key)
-    return gr.update(choices=[(display_label(n), n) for n in detector.class_names], value=[])
+def class_choices(model_key, selected=None):
+    """Đổi model thì cập nhật ô 'Chỉ đếm các loại' theo các loại model đó nhận được (vd model fine-tune).
+
+    Giữ lại các loại đang chọn mà model mới cũng có (vd đổi nano sang small: giữ nguyên lựa chọn).
+    """
+    names = _load_model(model_key).class_names
+    return gr.update(
+        choices=[(display_label(n), n) for n in names],
+        value=[c for c in (selected or []) if c in names],
+    )
 
 
 # ---------- Video ----------
