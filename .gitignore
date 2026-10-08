@@ -6,3 +6,4 @@ __pycache__/
 # File trọng số model (tải tự động, không cần đưa lên git)
 models/*.pt
 runs/
+.superpowers/
