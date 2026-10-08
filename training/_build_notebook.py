@@ -28,7 +28,7 @@ CELLS = [
 Notebook này train lại model YOLO để nhận ra **vật thể của bạn** (ốc vít, viên thuốc, cá giống...).
 
 **Chuẩn bị trước** (xem `training/README.md` trong project):
-1. Ảnh đã gán nhãn theo định dạng YOLO, xếp đúng cấu trúc `dataset/images/{train,val}` và `dataset/labels/{train,val}`, kèm `dataset/data.yaml`.
+1. Ảnh đã gán nhãn theo định dạng YOLO, kèm `dataset/data.yaml`. Cấu trúc chuẩn `dataset/images/{train,val}` + `dataset/labels/{train,val}`, hoặc cấu trúc Roboflow (`train/images`, `valid/images`) đều được: notebook đọc đường dẫn từ `data.yaml`.
 2. Đã chạy `python training/check_dataset.py dataset` trên máy và **không có lỗi**.
 3. Nén thư mục `dataset/` thành một file **.zip** (vd `dataset.zip`).
 
@@ -51,12 +51,30 @@ print("Giải nén:", zip_name)
     code("""
 from pathlib import Path
 
+from ultralytics.data.utils import IMG_FORMATS, check_det_dataset
+
 root = Path("/content/dataset")
 assert (root / "data.yaml").is_file(), "Không thấy /content/dataset/data.yaml: kiểm tra lại file zip (bên trong phải là thư mục dataset/)"
+# Đọc đường dẫn train/val đúng như lúc train (hỗ trợ cả cấu trúc chuẩn lẫn Roboflow)
+data = check_det_dataset(str(root / "data.yaml"), autodownload=False)
+
+
+def label_dir(image_dir):
+    # Quy tắc của Ultralytics: thay thư mục 'images' CUỐI CÙNG trong đường dẫn bằng 'labels'
+    parts = list(Path(image_dir).parts)
+    if "images" not in parts:
+        return Path(image_dir)
+    parts[len(parts) - 1 - parts[::-1].index("images")] = "labels"
+    return Path(*parts)
+
+
+split_dirs = {}
 for split in ("train", "val"):
-    n_img = len(list((root / "images" / split).glob("*")))
-    n_lbl = len(list((root / "labels" / split).glob("*.txt")))
-    print(f"{split}: {n_img} ảnh, {n_lbl} file nhãn")
+    image_dir = Path(data[split][0] if isinstance(data[split], list) else data[split])
+    split_dirs[split] = image_dir
+    n_img = sum(1 for p in image_dir.iterdir() if p.suffix.lower().lstrip(".") in IMG_FORMATS)
+    n_lbl = len(list(label_dir(image_dir).glob("*.txt")))
+    print(f"{split}: {n_img} ảnh, {n_lbl} file nhãn ({image_dir})")
 print(open(root / "data.yaml", encoding="utf-8").read())
 """),
     md("""
@@ -86,10 +104,9 @@ print(f"mAP50-95 = {metrics.box.map:.3f}")
     md("## 7. Thử dự đoán một ảnh trong tập val"),
     code("""
 from PIL import Image
-from ultralytics.data.utils import IMG_FORMATS
 
-# Chỉ lấy file ảnh (bỏ qua .DS_Store mà macOS hay cho vào file zip)
-sample = next(p for p in sorted((root / "images" / "val").iterdir()) if p.suffix.lower().lstrip(".") in IMG_FORMATS)
+# Chỉ lấy file ảnh (bỏ qua .DS_Store mà macOS hay cho vào file zip); thư mục val lấy từ ô 4
+sample = next(p for p in sorted(split_dirs["val"].iterdir()) if p.suffix.lower().lstrip(".") in IMG_FORMATS)
 pred = model.predict(sample, conf=0.25)
 print(sample.name, "- đếm được:", len(pred[0].boxes), "vật")
 Image.fromarray(pred[0].plot()[..., ::-1])  # plot() trả ảnh BGR, đảo sang RGB để hiển thị

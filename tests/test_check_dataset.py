@@ -170,3 +170,24 @@ def test_colab_notebook_handles_any_image_and_upload_name():
     assert "IMG_FORMATS" in code and ".plot()" in code  # bỏ qua .DS_Store, không phụ thuộc đuôi ảnh
     # Không ghép đường dẫn ảnh kết quả từ save_dir + tên ảnh gốc (Ultralytics luôn lưu thành .jpg)
     assert "save_dir" not in code
+
+
+def test_colab_cells_work_with_roboflow_layout(tmp_path):
+    """Chạy thật mã ô 4 (kiểm tra dữ liệu) và ô 7 (thử dự đoán) trên bộ dữ liệu kiểu Roboflow."""
+    from ultralytics import YOLO
+
+    for split in ("train", "valid"):
+        (tmp_path / split / "images").mkdir(parents=True)
+        (tmp_path / split / "labels").mkdir(parents=True)
+        Image.new("RGB", (64, 64)).save(tmp_path / split / "images" / "x.jpg")
+        (tmp_path / split / "labels" / "x.txt").write_text("0 0.5 0.5 0.2 0.2\n")
+    (tmp_path / ".DS_Store").write_text("")
+    (tmp_path / "data.yaml").write_text("train: ../train/images\nval: ../valid/images\nnc: 1\nnames: ['oc_vit']\n")
+
+    nb = json.loads((ROOT / "training" / "train_colab.ipynb").read_text(encoding="utf-8"))
+    codes = ["".join(c["source"]) for c in nb["cells"] if c["cell_type"] == "code"]
+    check_cell = next(c for c in codes if "data.yaml" in c and "assert" in c)
+    predict_cell = next(c for c in codes if "model.predict(" in c)
+    env = {"model": YOLO(str(ROOT / "models" / "yolo11n.pt"))}
+    exec(check_cell.replace("/content/dataset", str(tmp_path)), env)
+    exec(predict_cell, env)  # không được lỗi FileNotFoundError với cấu trúc Roboflow

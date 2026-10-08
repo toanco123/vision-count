@@ -6,8 +6,11 @@ cố định qua các khung; đếm số ID khác nhau là ra số vật thật 
 
 from __future__ import annotations
 
+import hashlib
 import math
+import os
 import tempfile
+import threading
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,6 +18,7 @@ from typing import Callable
 
 import cv2
 import numpy as np
+import yaml
 from PIL import Image, ImageDraw
 
 from vision_count import config
@@ -80,8 +84,15 @@ def _tracker_config(confidence: float) -> str:
     if confidence < cfg["new_track_thresh"]:
         cfg["track_high_thresh"] = cfg["new_track_thresh"] = confidence
         cfg["track_low_thresh"] = min(cfg["track_low_thresh"], confidence)
-    path = Path(tempfile.gettempdir()) / f"vision_count_bytetrack_{confidence:.3f}.yaml"
-    path.write_text("".join(f"{k}: {v}\n" for k, v in cfg.items()), encoding="utf-8")
+    # safe_dump ghi số nhỏ thành "1.0e-05" (đọc lại đúng là số); viết tay "1e-05" thì YAML hiểu là chữ
+    text = yaml.safe_dump(cfg, sort_keys=False)
+    # Tên file theo nội dung; ghi ra file tạm rồi đổi tên (nguyên tử), để 2 lần đếm chạy song song
+    # không bao giờ đọc phải file đang ghi dở
+    path = Path(tempfile.gettempdir()) / f"vision_count_bytetrack_{hashlib.md5(text.encode()).hexdigest()[:12]}.yaml"
+    if not path.exists():
+        tmp = path.with_name(f"{path.stem}.{os.getpid()}.{threading.get_ident()}.tmp")
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, path)
     return str(path)
 
 

@@ -139,6 +139,9 @@ def test_tracker_config_follows_low_confidence():
     low = yaml.safe_load(open(video_module._tracker_config(0.1), encoding="utf-8"))
     assert low["track_high_thresh"] == 0.1 and low["new_track_thresh"] == 0.1
     assert low["track_low_thresh"] <= 0.1
+    # Số rất nhỏ: phải đọc lại được thành SỐ (YAML hiểu "1e-05" là chuỗi chữ)
+    tiny = yaml.safe_load(open(video_module._tracker_config(0.00001), encoding="utf-8"))
+    assert isinstance(tiny["new_track_thresh"], float) and tiny["new_track_thresh"] == 0.00001
     default = yaml.safe_load(open(video_module._tracker_config(0.5), encoding="utf-8"))
     assert default["track_high_thresh"] == 0.25 and default["new_track_thresh"] == 0.25
     assert default["tracker_type"] == "bytetrack"
