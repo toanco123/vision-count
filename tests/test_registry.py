@@ -35,3 +35,29 @@ def test_default_key_is_in_available_models():
 def test_default_key_shares_cache_with_explicit_key():
     # get_detector() và get_detector("nano") phải là cùng một model, không nạp 2 lần
     assert get_detector() is get_detector("nano") is get_detector(model_key="nano")
+
+
+def test_get_detector_loads_once_under_concurrency(monkeypatch):
+    import threading
+    import time
+
+    from vision_count import registry
+
+    built = []
+
+    class SlowDetector:
+        def __init__(self, weights):
+            time.sleep(0.2)  # giả lập đang tải model
+            built.append(weights)
+
+    registry._load_detector.cache_clear()
+    monkeypatch.setattr(registry, "ObjectDetector", SlowDetector)
+    try:
+        threads = [threading.Thread(target=registry.get_detector, args=("nano",)) for _ in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert built == ["yolo11n.pt"]
+    finally:
+        registry._load_detector.cache_clear()  # bỏ SlowDetector khỏi cache cho các test sau

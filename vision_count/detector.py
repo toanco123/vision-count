@@ -95,6 +95,10 @@ def load_image(source: ImageInput, name: str | None = None) -> Image.Image:
             # Ảnh chụp từ điện thoại hay bị xoay; exif_transpose xoay lại cho đúng chiều
             img = ImageOps.exif_transpose(img)
             return img.convert("RGB")
+    except Image.DecompressionBombError as exc:
+        raise InvalidImageError(
+            f"'{name}' quá lớn (vượt {Image.MAX_IMAGE_PIXELS * 2:,} điểm ảnh). Hãy thu nhỏ ảnh rồi thử lại."
+        ) from exc
     except (UnidentifiedImageError, OSError, SyntaxError) as exc:
         raise InvalidImageError(
             f"'{name}' không phải là file ảnh hợp lệ (hỗ trợ JPG, PNG, WEBP, BMP...)."

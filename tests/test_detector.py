@@ -105,3 +105,11 @@ def test_draw_detections_keeps_size_and_original(detector):
 def test_load_image_error_uses_given_name():
     with pytest.raises(InvalidImageError, match="anh_cua_toi.png"):
         load_image(b"khong phai anh", name="anh_cua_toi.png")
+
+
+def test_load_image_rejects_decompression_bomb(monkeypatch):
+    from PIL import Image as PILImage
+
+    monkeypatch.setattr(PILImage, "MAX_IMAGE_PIXELS", 1000)  # ảnh mẫu 810x1080 vượt xa 2x ngưỡng
+    with pytest.raises(InvalidImageError, match="quá lớn"):
+        load_image(BUS_IMAGE)
