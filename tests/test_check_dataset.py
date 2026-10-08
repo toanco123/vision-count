@@ -97,3 +97,17 @@ def test_warns_relative_path_in_data_yaml(tmp_path):
     yaml_path.write_text("path: .\n" + yaml_path.read_text(encoding="utf-8"), encoding="utf-8")
     _, warnings = check_dataset(root)
     assert any("path" in w and "bỏ dòng" in w for w in warnings)
+
+
+def test_split_without_label_folder_is_error(tmp_path):
+    # Thiếu (hoặc đặt sai tên) thư mục labels/: Ultralytics sẽ coi mọi ảnh là ảnh nền, train ra model vô dụng
+    root = _make_dataset(tmp_path, {"train/a": None, "val/b": None})
+    errors, _ = check_dataset(root)
+    assert any("labels/train" in e for e in errors)
+    assert any("labels/val" in e for e in errors)
+
+
+def test_train_with_no_boxes_is_error(tmp_path):
+    root = _make_dataset(tmp_path, {"train/a": "", "train/b": "\n", "val/c": "0 0.5 0.5 0.2 0.2\n"})
+    errors, _ = check_dataset(root)
+    assert any("train" in e and "chưa có khung" in e for e in errors)

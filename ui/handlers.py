@@ -287,8 +287,9 @@ def count_video_file(
         if result.total
         else "### Không đếm được vật thể nào trong video\nThử giảm ngưỡng độ tin cậy hoặc bỏ bộ lọc loại vật."
     )
+    warning = f"\n\n⚠️ **{result.warning}**\n" if result.warning else ""
     summary = (
-        f"{headline}\n"
+        f"{headline}{warning}\n"
         f"{result.frames_processed} khung hình đã xử lý · video dài {result.duration_s:.1f} giây · "
         f"nhiều nhất {result.peak_in_frame} vật cùng lúc\n"
         f"_Model: {_model_name(model_key)} · Chế độ: {mode}_"

@@ -1,6 +1,7 @@
 """Test các hàm xử lý sự kiện của giao diện (gọi trực tiếp, không cần trình duyệt)."""
 
 import os
+import shutil
 import time
 from pathlib import Path
 
@@ -213,6 +214,21 @@ def test_count_video_file(history, synthetic_video):
 def test_count_video_file_without_video_raises():
     with pytest.raises(gr.Error):
         handlers.count_video_file(None, "nano", 0.25, [], 1, None)
+
+
+def test_count_video_file_unsupported_extension_raises(tmp_path, synthetic_video):
+    clip = tmp_path / "clip.3gp"
+    shutil.copy(synthetic_video, clip)
+    with pytest.raises(gr.Error, match="chưa được hỗ trợ"):
+        handlers.count_video_file(str(clip), "nano", 0.25, [], 1, None)
+
+
+def test_count_video_file_shows_incomplete_warning(synthetic_video, monkeypatch):
+    from vision_count import video as video_module
+
+    monkeypatch.setattr(video_module, "_probe", lambda path, name=None: (15.0, 90))
+    summary, *_ = handlers.count_video_file(str(synthetic_video), "nano", 0.25, [], 1, None)
+    assert "Chỉ đọc được 30/90 khung hình" in summary
 
 
 def test_count_video_file_bad_video_raises(tmp_path):

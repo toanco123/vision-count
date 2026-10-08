@@ -1,11 +1,13 @@
 """Test đếm video có tracking."""
 
 import csv
+import shutil
 
 import cv2
 import pytest
 from ultralytics.utils import ASSETS
 
+from vision_count import video as video_module
 from vision_count import InvalidVideoError, VideoCountResult, count_video, get_detector, vi_label, write_video_csv
 
 
@@ -76,3 +78,41 @@ def test_write_video_csv(tmp_path):
             ["ô tô", "car", "1"],
             ["Tổng cộng", "", "4"],
         ]
+
+
+# ---------- Sửa sau review: định dạng lạ, file ảnh, video đọc thiếu ----------
+
+def test_unsupported_extension_raises(tmp_path, synthetic_video):
+    for name in ("clip.3gp", "khong_co_duoi"):
+        path = tmp_path / name
+        shutil.copy(synthetic_video, path)
+        with pytest.raises(InvalidVideoError, match="chưa được hỗ trợ"):
+            count_video(get_detector(), path)
+
+
+def test_image_file_named_mp4_raises(tmp_path):
+    fake = tmp_path / "anh_doi_ten.mp4"
+    shutil.copy(ASSETS / "bus.jpg", fake)
+    with pytest.raises(InvalidVideoError, match="ảnh"):
+        count_video(get_detector(), fake)
+
+
+def test_error_message_uses_given_name(tmp_path):
+    bad = tmp_path / "video.mp4"
+    bad.write_text("x")
+    with pytest.raises(InvalidVideoError, match="clip_cua_toi.mp4"):
+        count_video(get_detector(), bad, name="clip_cua_toi.mp4")
+
+
+def test_complete_video_has_no_warning(synthetic_video):
+    result = count_video(get_detector(), synthetic_video)
+    assert result.frames_expected == 30 and result.complete and result.warning is None
+
+
+def test_incomplete_read_warns(synthetic_video, monkeypatch):
+    # Giả lập video hỏng giữa chừng: phần đầu file khai báo 90 khung nhưng chỉ đọc được 30
+    monkeypatch.setattr(video_module, "_probe", lambda path, name=None: (15.0, 90))
+    result = count_video(get_detector(), synthetic_video)
+    assert result.frames_processed == 30 and result.frames_expected == 90
+    assert not result.complete
+    assert "Chỉ đọc được 30/90 khung hình" in result.warning

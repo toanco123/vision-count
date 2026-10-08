@@ -17,9 +17,13 @@ def _class_count(names) -> int:
     return len(names) if isinstance(names, (list, dict)) else 0
 
 
+def _read_lines(path: Path) -> list[str]:
+    return path.read_text(encoding="utf-8").splitlines()
+
+
 def _check_label_file(path: Path, n_classes: int) -> list[str]:
     errors = []
-    for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    for i, line in enumerate(_read_lines(path), start=1):
         if not line.strip():
             continue
         parts = line.split()
@@ -67,6 +71,11 @@ def check_dataset(root: str | Path) -> tuple[list[str], list[str]]:
         labels = {p.stem: p for p in label_dir.glob("*.txt")} if label_dir.is_dir() else {}
         if not images:
             errors.append(f"Thư mục images/{split} chưa có ảnh nào")
+        elif not labels:
+            # Ultralytics vẫn train được nhưng coi mọi ảnh là ảnh nền: ra model không nhận ra gì
+            errors.append(
+                f"Thư mục labels/{split} không có file nhãn nào (thiếu thư mục, đặt sai tên, hoặc chưa xuất nhãn)"
+            )
         for stem, image in sorted(images.items()):
             if stem not in labels:
                 warnings.append(f"{split}: ảnh {image.name} không có file nhãn (sẽ được coi là ảnh nền, không có vật)")
@@ -74,6 +83,9 @@ def check_dataset(root: str | Path) -> tuple[list[str], list[str]]:
             if stem not in images:
                 errors.append(f"{split}: file nhãn {label.name} không có ảnh tương ứng")
             errors.extend(f"{split}: {e}" for e in _check_label_file(label, n_classes))
+        n_boxes = sum(1 for label in labels.values() for line in _read_lines(label) if line.strip())
+        if split == "train" and labels and n_boxes == 0:
+            errors.append("train: các file nhãn đều trống, chưa có khung nào để model học")
     return errors, warnings
 
 

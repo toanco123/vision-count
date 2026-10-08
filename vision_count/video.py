@@ -6,7 +6,6 @@ cố định qua các khung; đếm số ID khác nhau là ra số vật thật 
 
 from __future__ import annotations
 
-import math
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -27,6 +26,10 @@ class InvalidVideoError(ValueError):
     """Lỗi khi file đầu vào không phải video hợp lệ."""
 
 
+class VideoWriteError(ValueError):
+    """Lỗi khi không ghi được video kết quả."""
+
+
 @dataclass
 class VideoCountResult:
     counts: dict[str, int] = field(default_factory=dict)  # số vật KHÁC NHAU theo loại
@@ -35,21 +38,60 @@ class VideoCountResult:
     duration_s: float = 0.0
     peak_in_frame: int = 0  # nhiều nhất bao nhiêu vật cùng lúc trong một khung
     output_path: Path | None = None  # video đã vẽ khung + ID (nếu có yêu cầu)
+    frames_expected: int = 0  # số khung lẽ ra phải xử lý (0 = video không cho biết số khung)
 
     @property
     def total(self) -> int:
         return sum(self.counts.values())
 
+    @property
+    def complete(self) -> bool:
+        """Đã đọc được gần hết video chưa (video hỏng giữa chừng sẽ dừng đọc sớm)."""
+        return self.frames_expected == 0 or self.frames_processed >= 0.9 * self.frames_expected
 
-def _probe(video_path: str | Path) -> tuple[float, int]:
+    @property
+    def warning(self) -> str | None:
+        if self.complete:
+            return None
+        return (
+            f"Chỉ đọc được {self.frames_processed}/{self.frames_expected} khung hình: video có thể bị hỏng, "
+            "kết quả chỉ tính phần đã đọc được."
+        )
+
+
+def _check_format(video_path: str | Path, name: str) -> None:
+    """Chỉ nhận đuôi file mà Ultralytics đọc được; đuôi khác Ultralytics sẽ báo lỗi khó hiểu."""
+    from ultralytics.data.utils import VID_FORMATS
+
+    suffix = Path(video_path).suffix.lower().lstrip(".")
+    if suffix not in VID_FORMATS:
+        kind = f"đuôi '.{suffix}'" if suffix else "không có đuôi file"
+        raise InvalidVideoError(
+            f"'{name}' {kind} chưa được hỗ trợ. Hãy dùng video có đuôi: {', '.join(sorted(VID_FORMATS))}."
+        )
+
+
+def _is_image(video_path: str | Path) -> bool:
+    try:
+        with Image.open(video_path) as img:
+            img.verify()
+        return True
+    except Exception:  # Pillow không mở được: không phải ảnh
+        return False
+
+
+def _probe(video_path: str | Path, name: str | None = None) -> tuple[float, int]:
     """Đọc fps và số khung hình; file không đọc được thì báo lỗi rõ ràng."""
+    name = name or Path(video_path).name
+    # Ảnh bị đổi đuôi thành .mp4 vẫn mở được bằng OpenCV, nên kiểm tra riêng (trừ gif, vốn là video)
+    if Path(video_path).suffix.lower() != ".gif" and _is_image(video_path):
+        raise InvalidVideoError(f"'{name}' là file ảnh, không phải video. Hãy đếm ảnh ở tab Một ảnh (hoặc API /detect).")
     cap = cv2.VideoCapture(str(video_path))
     try:
         if not cap.isOpened() or not cap.read()[0]:
-            raise InvalidVideoError(
-                f"'{Path(video_path).name}' không phải là file video hợp lệ (hỗ trợ MP4, MOV, AVI...)."
-            )
-        return cap.get(cv2.CAP_PROP_FPS) or 0.0, int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            raise InvalidVideoError(f"'{name}' không phải là file video hợp lệ (hỗ trợ MP4, MOV, AVI...).")
+        # Một số video không ghi số khung (trả về 0 hoặc số âm): coi như "không biết"
+        return cap.get(cv2.CAP_PROP_FPS) or 0.0, max(0, int(cap.get(cv2.CAP_PROP_FRAME_COUNT)))
     finally:
         cap.release()
 
@@ -60,7 +102,7 @@ def _open_writer(path: Path, fps: float, shape: tuple[int, ...]) -> cv2.VideoWri
         writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*codec), max(fps, 1.0), (width, height))
         if writer.isOpened():
             return writer
-    raise RuntimeError("Không ghi được video kết quả trên máy này.")
+    raise VideoWriteError("Không ghi được video kết quả trên máy này.")
 
 
 def _draw_frame(bgr, boxes, ids, classes, names, label_fn, counted: int):
@@ -90,18 +132,22 @@ def count_video(
     label_fn: Callable[[str], str] | None = None,
     progress: Callable[[int, int], None] | None = None,
     min_track_frames: int = config.MIN_TRACK_FRAMES,
+    name: str | None = None,
 ) -> VideoCountResult:
     """Đếm số vật khác nhau trong video.
 
     vid_stride: chỉ xử lý 1 trên N khung hình (nhanh hơn với video dài, tracking kém chính xác hơn).
     output_path: nếu có, ghi video đã vẽ khung + ID ra file mp4.
     progress(done, total): được gọi sau mỗi khung đã xử lý (để hiện thanh tiến độ).
+    name: tên hiển thị trong thông báo lỗi (vd tên file người dùng tải lên qua API).
     """
     if not 0.0 <= confidence <= 1.0:
         raise ValueError("Ngưỡng độ tin cậy phải nằm trong khoảng 0 đến 1.")
     if vid_stride < 1:
         raise ValueError("vid_stride phải từ 1 trở lên.")
-    fps, total_frames = _probe(video_path)
+    name = name or Path(video_path).name
+    _check_format(video_path, name)
+    fps, total_frames = _probe(video_path, name)
     class_ids = detector._class_names_to_ids(classes) if classes else None
 
     from ultralytics import YOLO
@@ -109,7 +155,7 @@ def count_video(
     # Bản model riêng cho lần đếm này: trạng thái tracking không dính vào model dùng chung,
     # và an toàn khi đếm ảnh chạy song song ở luồng khác
     model = YOLO(str(detector.model_path))
-    expected = max(1, math.ceil(total_frames / vid_stride))
+    expected = total_frames // vid_stride  # Ultralytics bỏ qua khung theo cùng cách tính này
     seen: dict[int, Counter] = defaultdict(Counter)  # ID -> số khung xuất hiện theo từng loại
     writer = None
     processed = peak = 0
@@ -139,7 +185,7 @@ def count_video(
                 counted = sum(1 for c in seen.values() if sum(c.values()) >= min_track_frames)
                 writer.write(_draw_frame(r.orig_img, boxes, ids, clss, model.names, label_fn, counted))
             if progress:
-                progress(processed, expected)
+                progress(processed, max(expected, processed))  # không biết số khung thì không vượt 100%
     finally:
         if writer is not None:
             writer.release()
@@ -152,9 +198,10 @@ def count_video(
         counts=dict(counts.most_common()),
         frames_processed=processed,
         fps=fps,
-        duration_s=round(total_frames / fps, 2) if fps else 0.0,
+        duration_s=round((total_frames or processed * vid_stride) / fps, 2) if fps else 0.0,
         peak_in_frame=peak,
         output_path=Path(output_path) if writer is not None else None,
+        frames_expected=expected,
     )
 
 

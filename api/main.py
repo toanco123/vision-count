@@ -153,14 +153,25 @@ def video_count(
     vid_stride: int = Form(1, ge=1, le=10, description="Chỉ xử lý 1 trên N khung hình"),
 ):
     """Đếm số vật KHÁC NHAU trong video (có tracking). Video dài sẽ mất vài phút."""
+    from ultralytics.data.utils import VID_FORMATS
+
+    original = file.filename or "video"
+    suffix = Path(original).suffix.lower()
     with tempfile.TemporaryDirectory() as tmp:
-        path = Path(tmp) / (Path(file.filename or "video.mp4").name)
+        # Không dùng tên file của người gửi (có thể là "blob", "..", quá dài...). OpenCV nhận dạng video
+        # theo nội dung, nên đuôi lạ (vd .3gp) cứ lưu thành .mp4; chỉ giữ đuôi mà Ultralytics biết.
+        path = Path(tmp) / ("video" + (suffix if suffix.lstrip(".") in VID_FORMATS else ".mp4"))
         with open(path, "wb") as out:
             shutil.copyfileobj(file.file, out)
         try:
             # count_video dùng bản model riêng nên không cần khóa
             result = count_video(
-                get_detector(model), path, confidence=confidence, classes=_parse_classes(classes), vid_stride=vid_stride
+                get_detector(model),
+                path,
+                confidence=confidence,
+                classes=_parse_classes(classes),
+                vid_stride=vid_stride,
+                name=original,
             )
         except (InvalidVideoError, ValueError) as exc:
             raise _bad_request(exc) from exc
@@ -173,4 +184,6 @@ def video_count(
         "fps": result.fps,
         "duration_s": result.duration_s,
         "peak_in_frame": result.peak_in_frame,
+        "complete": result.complete,  # False: video hỏng giữa chừng, chỉ đếm được phần đầu
+        "warning": result.warning,
     }

@@ -79,6 +79,22 @@ def test_api_video_count(synthetic_video):
         data = client.post("/video/count", files={"file": ("synthetic.mp4", f, "video/mp4")}).json()
     assert data["counts"] == {"person": 3} and data["counts_vi"] == {"người": 3}
     assert data["frames_processed"] == 30
+    assert data["complete"] is True and data["warning"] is None
+
+
+@pytest.mark.parametrize("filename", ["blob", "clip.3gp", "..", "a" * 300 + ".mp4"])
+def test_api_video_accepts_any_upload_name(synthetic_video, filename):
+    # Trình duyệt gửi Blob với tên "blob"; OpenCV nhận dạng video theo nội dung nên tên file không quan trọng
+    with open(synthetic_video, "rb") as f:
+        resp = client.post("/video/count", files={"file": (filename, f, "video/mp4")})
+    assert resp.status_code == 200 and resp.json()["counts"] == {"person": 3}
+
+
+def test_api_video_rejects_image():
+    with open(BUS, "rb") as f:
+        resp = client.post("/video/count", files={"file": ("bus.jpg", f, "image/jpeg")})
+    assert resp.status_code == 400
+    assert "ảnh" in resp.json()["detail"] and "bus.jpg" in resp.json()["detail"]
 
 
 def test_api_video_rejects_non_video(tmp_path):

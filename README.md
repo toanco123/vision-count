@@ -207,7 +207,7 @@ Kết quả gồm:
 
 ### Đếm video
 
-Tab **Video**: tải lên một file video (MP4, MOV, AVI...), rồi bấm **Đếm video**.
+Tab **Video**: tải lên một file video, rồi bấm **Đếm video**. Hỗ trợ các đuôi: mp4, mov, avi, mkv, webm, m4v, mpeg, mpg, ts, wmv, asf, gif. File `.3gp` hay `.mts` của điện thoại cũ hoặc máy quay cần đổi sang mp4 trước.
 
 Trong video, cùng một người xuất hiện ở hàng chục khung hình. Nếu cộng số đếm từng khung lại sẽ ra con số rất lớn. Ứng dụng dùng **tracking** (thuật toán ByteTrack): mỗi vật được gán một **ID** và theo dõi qua các khung, nên kết quả là **số vật khác nhau** đã xuất hiện. Ví dụ thử nghiệm: video 30 khung có 3 người đi ngang, cộng từng khung ra 79, còn tracking ra đúng 3.
 
@@ -221,6 +221,7 @@ Lưu ý:
 - **Tốc độ** (Mac M1, model Nano): khoảng 35-45 ms mỗi khung hình. Video 1 phút ở 30 fps (1800 khung) mất khoảng 1-1.5 phút. Thanh tiến độ hiện số khung đã xử lý.
 - Thanh trượt **Xử lý 1 trên N khung hình**: đặt 2 hoặc 3 để chạy nhanh gấp 2-3 lần với video dài. Đổi lại, tracking dễ mất dấu vật di chuyển nhanh.
 - **Giới hạn của tracking**: vật bị che khuất lâu, hoặc đi ra khỏi khung rồi quay lại, có thể bị cấp ID mới và **bị đếm thêm lần nữa**. Khi nhiều vật đè lên nhau nhiều, ID cũng dễ bị đổi. Hợp nhất với camera cố định, vật đi qua rõ ràng.
+- Nếu video bị hỏng giữa chừng, ứng dụng chỉ đếm được phần đầu và sẽ hiện cảnh báo **⚠️ Chỉ đọc được X/Y khung hình**.
 - Chế độ vật nhỏ không áp dụng cho video (sẽ quá chậm). Ứng dụng chỉ cho tải file video lên, chưa quay trực tiếp từ webcam.
 
 ### Lịch sử
@@ -354,7 +355,9 @@ Kết quả của `/detect` có dạng:
  "image_width": 810, "image_height": 1080, "region": null}
 ```
 
-Khi gửi sai (file không phải ảnh, model/loại không có, vùng sai định dạng), API trả mã **400** kèm thông báo tiếng Việt trong `detail`. Ngưỡng ngoài 0..1 trả mã **422**.
+Kết quả của `/video/count` có thêm `complete` (`false` nếu video hỏng giữa chừng, chỉ đếm được phần đầu) và `warning` (lời nhắc tiếng Việt, hoặc `null`).
+
+Khi gửi sai (file không phải ảnh/video, model/loại không có, vùng sai định dạng), API trả mã **400** kèm thông báo tiếng Việt trong `detail`. Ngưỡng ngoài 0..1 trả mã **422**.
 
 > API mặc định chỉ cho **chính máy bạn** gọi (127.0.0.1). Muốn điện thoại cùng Wi-Fi gọi được thì chạy `uvicorn api.main:app --host 0.0.0.0 --port 8000` và gọi bằng địa chỉ IP của máy. Khi đó **mọi máy cùng mạng** đều gọi được, nên chỉ làm vậy trong mạng tin cậy.
 
