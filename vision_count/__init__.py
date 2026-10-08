@@ -15,12 +15,15 @@ from vision_count.detector import (
     load_image,
 )
 from vision_count.drawing import draw_detections
+from vision_count.labels_vi import display_label, vi_label
 
 __all__ = [
     "Detection",
     "DetectionResult",
     "InvalidImageError",
     "ObjectDetector",
+    "display_label",
     "draw_detections",
     "load_image",
+    "vi_label",
 ]
