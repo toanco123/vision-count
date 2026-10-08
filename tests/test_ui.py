@@ -14,7 +14,7 @@ def test_uploaded_files_are_kept_for_a_day(tmp_path):
 def test_app_has_three_main_tabs(tmp_path):
     app = build_app(HistoryStore(tmp_path / "h.db"))
     labels = {block.label for block in app.blocks.values() if type(block).__name__ == "Tab"}
-    assert {"Một ảnh", "Nhiều ảnh", "Lịch sử"} <= labels
+    assert {"Một ảnh", "Nhiều ảnh", "Video", "Lịch sử"} <= labels
 
 
 def test_result_image_is_not_an_upload_box(tmp_path):

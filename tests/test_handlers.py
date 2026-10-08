@@ -195,3 +195,37 @@ def test_new_export_dir_removes_old_folders(tmp_path):
     created = handlers.new_export_dir(root=tmp_path, max_age_seconds=3600)
     assert not old.exists() and recent.exists()
     assert created.parent == tmp_path and created.is_dir()
+
+
+# ---------- Video ----------
+
+def test_count_video_file(history, synthetic_video):
+    summary, table, video_out, csv_path = handlers.count_video_file(
+        str(synthetic_video), "nano", 0.25, [], 1, history
+    )
+    assert "3 vật thể khác nhau" in summary
+    assert table.values.tolist() == [["người (person)", 3]]
+    assert Path(video_out).is_file() and Path(csv_path).is_file()
+    [entry] = history.recent()
+    assert entry.source == "synthetic.mp4" and entry.total == 3 and entry.mode.startswith("Video")
+
+
+def test_count_video_file_without_video_raises():
+    with pytest.raises(gr.Error):
+        handlers.count_video_file(None, "nano", 0.25, [], 1, None)
+
+
+def test_count_video_file_bad_video_raises(tmp_path):
+    bad = tmp_path / "hong.mp4"
+    bad.write_text("x")
+    with pytest.raises(gr.Error):
+        handlers.count_video_file(str(bad), "nano", 0.25, [], 1, None)
+
+
+# ---------- Ô lọc đổi theo model ----------
+
+def test_class_choices_follow_model():
+    update = handlers.class_choices("small")
+    assert update["choices"][0] == ("người (person)", "person")
+    assert len(update["choices"]) == 80
+    assert update["value"] == []

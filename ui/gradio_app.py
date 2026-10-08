@@ -14,6 +14,7 @@ from ui.handlers import (
     NO_REGION_TEXT,
     SOURCE_UPLOAD,
     SOURCE_WEBCAM,
+    VIDEO_COLUMNS,
 )
 from vision_count import LABEL_FULL, HistoryStore, config, display_label, get_detector
 
@@ -120,6 +121,31 @@ def build_app(history: HistoryStore | None = None) -> gr.Blocks:
                 batch_download = gr.File(label="Tải bảng tổng hợp (CSV)", interactive=False)
                 batch_gallery = gr.Gallery(label="Ảnh đã khoanh khung", columns=3, height="auto")
 
+            # ---------- Tab Video ----------
+            with gr.Tab("Video"):
+                gr.Markdown(
+                    "Đếm số vật **khác nhau** xuất hiện trong video: mỗi vật được gán một ID và theo dõi qua "
+                    "các khung hình, nên không bị đếm trùng. Dùng Model, Ngưỡng và Chỉ đếm các loại ở phần "
+                    "Cài đặt (chế độ vật nhỏ không áp dụng cho video)."
+                )
+                # Chỉ cho tải file lên: không cần ffmpeg (quay webcam thì Gradio cần ffmpeg để xử lý)
+                video_input = gr.Video(label="Video cần đếm", sources=["upload"])
+                stride_input = gr.Slider(
+                    minimum=1,
+                    maximum=5,
+                    step=1,
+                    value=1,
+                    label="Xử lý 1 trên N khung hình",
+                    info="Tăng lên để chạy nhanh hơn với video dài (tracking có thể kém chính xác hơn).",
+                )
+                video_button = gr.Button("Đếm video", variant="primary")
+                video_summary = gr.Markdown()
+                video_table = gr.Dataframe(
+                    headers=VIDEO_COLUMNS, label="Số vật khác nhau theo loại", interactive=False
+                )
+                video_output = gr.Video(label="Video kết quả (khung + ID)", interactive=False)
+                video_download = gr.File(label="Tải bảng số lượng (CSV)", interactive=False)
+
             # ---------- Tab Lịch sử ----------
             with gr.Tab("Lịch sử") as history_tab:
                 gr.Markdown("Các lần đếm gần nhất (lưu trên máy, chỉ số liệu, không lưu ảnh).")
@@ -171,6 +197,17 @@ def build_app(history: HistoryStore | None = None) -> gr.Blocks:
             inputs=[batch_input, *settings],
             outputs=[batch_summary, batch_table, batch_gallery, batch_download],
         )
+
+        def on_video(path, model_key, conf, classes, stride, progress=gr.Progress()):
+            return handlers.count_video_file(path, model_key, conf, classes, stride, history, progress)
+
+        video_button.click(
+            fn=on_video,
+            inputs=[video_input, model_input, confidence_input, class_input, stride_input],
+            outputs=[video_summary, video_table, video_output, video_download],
+        )
+        # Đổi model thì ô lọc đổi theo các loại của model đó (quan trọng với model fine-tune)
+        model_input.change(fn=handlers.class_choices, inputs=model_input, outputs=class_input)
 
         def show_history():
             return handlers.history_table(history)

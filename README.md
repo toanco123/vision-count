@@ -28,7 +28,8 @@ vision-count/
 │   ├── region.py           #   Vùng đếm: chỉ đếm vật có tâm nằm trong vùng
 │   ├── tiling.py           #   Chế độ vật nhỏ: chia ô 640px, gộp khung trùng
 │   ├── batch.py            #   Đếm nhiều ảnh, xuất CSV tổng hợp
-│   └── history.py          #   Lịch sử đếm (SQLite)
+│   ├── history.py          #   Lịch sử đếm (SQLite)
+│   └── video.py            #   Đếm video có tracking (không đếm trùng)
 ├── ui/
 │   ├── gradio_app.py       # Bố cục giao diện Gradio (3 tab) và nối sự kiện
 │   └── handlers.py         # Hàm xử lý khi bấm nút, chỉ gọi tới vision_count
@@ -116,7 +117,7 @@ Muốn tắt ứng dụng: quay lại Terminal và bấm `Ctrl + C`.
 
 ### Cách dùng
 
-Giao diện có phần **Cài đặt** ở trên cùng (dùng chung) và 3 tab: **Một ảnh**, **Nhiều ảnh**, **Lịch sử**.
+Giao diện có phần **Cài đặt** ở trên cùng (dùng chung) và 4 tab: **Một ảnh**, **Nhiều ảnh**, **Video**, **Lịch sử**.
 
 **Cài đặt:**
 - **Model**:
@@ -124,7 +125,7 @@ Giao diện có phần **Cài đặt** ở trên cùng (dùng chung) và 3 tab: 
   - **Small**: chính xác hơn với vật nhỏ hoặc bị che, chậm hơn một chút (trên Mac M1: khoảng 0.08 giây/ảnh, so với 0.05 giây của Nano). Lần đầu chọn Small, ứng dụng sẽ tải file `yolo11s.pt` (~19MB) nên cần mạng; các lần sau chạy offline.
 - **Ngưỡng độ tin cậy** (mặc định 0.25), xem giải thích bên dưới.
 - **Chế độ vật nhỏ**: xem mục [Chế độ vật nhỏ](#chế-độ-vật-nhỏ).
-- **Chỉ đếm các loại** (tùy chọn), ví dụ `người (person)`. Để trống thì đếm tất cả.
+- **Chỉ đếm các loại** (tùy chọn), ví dụ `người (person)`. Để trống thì đếm tất cả. Khi đổi **Model**, danh sách này tự đổi theo các loại model đó nhận được (quan trọng khi dùng model tự train), và các lựa chọn cũ bị xóa.
 - **Kiểu nhãn trên ảnh**:
   - **Đầy đủ**: `#1 người 87%`.
   - **Chỉ số thứ tự**: `1`, `2`, `3`..., gọn hơn khi có nhiều vật.
@@ -189,9 +190,27 @@ Kết quả gồm:
 - File `tong_hop_nhieu_anh.csv`: mỗi ảnh một dòng, mỗi loại vật một cột, có dòng tổng cộng ở cuối.
 - Bộ ảnh đã khoanh khung (bấm vào để xem to).
 
+### Đếm video
+
+Tab **Video**: tải lên một file video (MP4, MOV, AVI...), rồi bấm **Đếm video**.
+
+Trong video, cùng một người xuất hiện ở hàng chục khung hình. Nếu cộng số đếm từng khung lại sẽ ra con số rất lớn. Ứng dụng dùng **tracking** (thuật toán ByteTrack): mỗi vật được gán một **ID** và theo dõi qua các khung, nên kết quả là **số vật khác nhau** đã xuất hiện. Ví dụ thử nghiệm: video 30 khung có 3 người đi ngang, cộng từng khung ra 79, còn tracking ra đúng 3.
+
+Kết quả gồm:
+- Số vật khác nhau theo loại, số khung đã xử lý, độ dài video, và nhiều nhất bao nhiêu vật xuất hiện cùng lúc.
+- **Video kết quả**: mỗi vật có khung kèm nhãn `người #12` (12 là ID), góc trên trái ghi **Đã đếm: N** cập nhật theo thời gian.
+- File CSV số lượng.
+
+Lưu ý:
+- Một ID phải xuất hiện ít nhất **3 khung hình** mới được đếm, để bỏ các nhận diện chập chờn.
+- **Tốc độ** (Mac M1, model Nano): khoảng 35-45 ms mỗi khung hình. Video 1 phút ở 30 fps (1800 khung) mất khoảng 1-1.5 phút. Thanh tiến độ hiện số khung đã xử lý.
+- Thanh trượt **Xử lý 1 trên N khung hình**: đặt 2 hoặc 3 để chạy nhanh gấp 2-3 lần với video dài. Đổi lại, tracking dễ mất dấu vật di chuyển nhanh.
+- **Giới hạn của tracking**: vật bị che khuất lâu, hoặc đi ra khỏi khung rồi quay lại, có thể bị cấp ID mới và **bị đếm thêm lần nữa**. Khi nhiều vật đè lên nhau nhiều, ID cũng dễ bị đổi. Hợp nhất với camera cố định, vật đi qua rõ ràng.
+- Chế độ vật nhỏ không áp dụng cho video (sẽ quá chậm). Ứng dụng chỉ cho tải file video lên, chưa quay trực tiếp từ webcam.
+
 ### Lịch sử
 
-Mỗi lần đếm (cả một ảnh lẫn nhiều ảnh) được tự động lưu vào file `data/history.db` trên máy bạn. Đây là SQLite, một cơ sở dữ liệu dạng file có sẵn trong Python. Ứng dụng **chỉ lưu số liệu** (thời gian, tên ảnh, model, chế độ, số lượng), **không lưu ảnh**.
+Mỗi lần đếm (một ảnh, nhiều ảnh và video) được tự động lưu vào file `data/history.db` trên máy bạn. Đây là SQLite, một cơ sở dữ liệu dạng file có sẵn trong Python. Ứng dụng **chỉ lưu số liệu** (thời gian, tên ảnh, model, chế độ, số lượng), **không lưu ảnh**.
 
 Tab **Lịch sử** hiện 50 lần đếm gần nhất. Bấm **Làm mới** để cập nhật, hoặc **Xóa lịch sử** để xóa hết. Thư mục `data/` không được đưa lên git.
 
@@ -271,6 +290,11 @@ write_batch_csv(items, "tong_hop.csv")
 from vision_count import HistoryStore
 for entry in HistoryStore().recent(limit=5):
     print(entry.created_at, entry.source, entry.total, entry.counts)
+
+# Đếm video (có tracking), ghi kèm video đã vẽ khung + ID
+from vision_count import count_video
+video = count_video(detector, "video.mp4", output_path="video_ket_qua.mp4", label_fn=vi_label)
+print(video.counts, video.frames_processed)   # {'person': 3} 30
 ```
 
 ---

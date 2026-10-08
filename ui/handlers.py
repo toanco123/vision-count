@@ -19,8 +19,10 @@ from vision_count import (
     LABEL_NUMBER,
     HistoryStore,
     InvalidImageError,
+    InvalidVideoError,
     config,
     count_many,
+    count_video,
     display_label,
     draw_detections,
     draw_region,
@@ -32,12 +34,14 @@ from vision_count import (
     normalize_region,
     vi_label,
     write_batch_csv,
+    write_video_csv,
 )
 
 COUNT_COLUMNS = ["Loại vật thể", "Số lượng"]
 DETAIL_COLUMNS = ["#", "Loại vật thể", "Độ tin cậy", "Khung (x1, y1, x2, y2)"]
 BATCH_COLUMNS = ["Ảnh", "Tổng", "Chi tiết"]
 HISTORY_COLUMNS = ["Thời gian", "Nguồn", "Model", "Chế độ", "Tổng", "Chi tiết"]
+VIDEO_COLUMNS = ["Loại vật thể", "Số vật khác nhau"]
 
 # Hai nguồn ảnh: tải file lên hoặc chụp từ camera
 SOURCE_UPLOAD = "upload"
@@ -237,6 +241,64 @@ def count_batch(
     )
     csv_path = write_batch_csv(items, new_export_dir() / "tong_hop_nhieu_anh.csv")
     return summary, pd.DataFrame(rows, columns=BATCH_COLUMNS), gallery, str(csv_path)
+
+
+# ---------- Ô lọc theo model ----------
+
+def class_choices(model_key):
+    """Đổi model thì cập nhật ô 'Chỉ đếm các loại' theo các loại model đó nhận được (vd model fine-tune)."""
+    detector = _load_model(model_key)
+    return gr.update(choices=[(display_label(n), n) for n in detector.class_names], value=[])
+
+
+# ---------- Video ----------
+
+def count_video_file(
+    video_path, model_key, confidence, selected_classes, vid_stride, history: HistoryStore | None = None, progress=None
+):
+    """Nút 'Đếm video'. Trả về (tóm tắt, bảng, video kết quả, file CSV)."""
+    if not video_path:
+        raise gr.Error("Vui lòng tải một video lên trước.")
+    detector = _load_model(model_key)
+    stride = int(vid_stride)
+    out_dir = new_export_dir()
+
+    def report(done, total):
+        if progress is not None:
+            progress(done / total, desc=f"Đang xử lý khung hình {done}/{total}")
+
+    try:
+        result = count_video(
+            detector,
+            video_path,
+            confidence=confidence,
+            classes=selected_classes or None,
+            vid_stride=stride,
+            output_path=out_dir / "video_ket_qua.mp4",
+            label_fn=vi_label,
+            progress=report,
+        )
+    except (InvalidVideoError, ValueError) as exc:
+        raise gr.Error(str(exc)) from exc
+
+    mode = "Video" + (f", 1/{stride} khung hình" if stride > 1 else "")
+    headline = (
+        f"### {result.total} vật thể khác nhau trong video"
+        if result.total
+        else "### Không đếm được vật thể nào trong video\nThử giảm ngưỡng độ tin cậy hoặc bỏ bộ lọc loại vật."
+    )
+    summary = (
+        f"{headline}\n"
+        f"{result.frames_processed} khung hình đã xử lý · video dài {result.duration_s:.1f} giây · "
+        f"nhiều nhất {result.peak_in_frame} vật cùng lúc\n"
+        f"_Model: {_model_name(model_key)} · Chế độ: {mode}_"
+    )
+    table = pd.DataFrame([[display_label(l), n] for l, n in result.counts.items()], columns=VIDEO_COLUMNS)
+    csv_path = write_video_csv(result, out_dir / "so_luong_video.csv")
+    if history is not None:
+        history.add(Path(video_path).name, model_key, mode, result)
+    video_out = str(result.output_path) if result.output_path else None
+    return summary, table, video_out, str(csv_path)
 
 
 # ---------- Lịch sử ----------
