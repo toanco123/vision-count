@@ -10,7 +10,9 @@ MODELS_DIR = PROJECT_ROOT / "models"
 
 # Model YOLO bản nano: nhỏ (~5MB), chạy được trên CPU.
 # Lần chạy đầu Ultralytics sẽ tự tải file này về (chỉ tải 1 lần).
-# Sau này fine-tune xong, chỉ cần đổi thành đường dẫn tới file best.pt của bạn.
+# Đây là model mặc định khi tự tạo ObjectDetector() trong code.
+# Giao diện lấy danh sách model từ AVAILABLE_MODELS bên dưới: fine-tune xong thì thêm
+# một dòng vào đó, ví dụ "cua_toi": ("Model của tôi", "best.pt").
 DEFAULT_MODEL = "yolo11n.pt"
 
 # Ngưỡng độ tin cậy mặc định: chỉ giữ các khung model "chắc chắn" >= 25%
@@ -18,3 +20,11 @@ DEFAULT_CONFIDENCE = 0.25
 
 # Kích thước ảnh đưa vào model (pixel). 640 là chuẩn của YOLO.
 DEFAULT_IMAGE_SIZE = 640
+
+# Các model cho người dùng chọn: khóa -> (tên hiển thị, file weights).
+# Bản small chính xác hơn nhưng chậm hơn; lần đầu chọn sẽ tải file (~19MB).
+AVAILABLE_MODELS = {
+    "nano": ("Nano: nhanh nhất", "yolo11n.pt"),
+    "small": ("Small: chính xác hơn, chậm hơn", "yolo11s.pt"),
+}
+DEFAULT_MODEL_KEY = "nano"

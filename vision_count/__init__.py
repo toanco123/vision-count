@@ -17,6 +17,7 @@ from vision_count.detector import (
 from vision_count.drawing import draw_detections
 from vision_count.export import export_result
 from vision_count.labels_vi import display_label, vi_label
+from vision_count.registry import get_detector, is_model_downloaded
 
 __all__ = [
     "Detection",
@@ -26,6 +27,8 @@ __all__ = [
     "display_label",
     "draw_detections",
     "export_result",
+    "get_detector",
+    "is_model_downloaded",
     "load_image",
     "vi_label",
 ]

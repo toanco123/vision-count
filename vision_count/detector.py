@@ -107,7 +107,8 @@ class ObjectDetector:
         # Import ở đây để việc import package nhanh, chỉ nạp PyTorch khi thật sự cần
         from ultralytics import YOLO
 
-        self.model = YOLO(str(self._resolve_model_path(model_path)))
+        self.model_path = self._resolve_model_path(model_path)
+        self.model = YOLO(str(self.model_path))
         self.device = device  # None = để Ultralytics tự chọn (CPU trên máy không có GPU)
 
     @staticmethod
