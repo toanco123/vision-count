@@ -111,3 +111,62 @@ def test_train_with_no_boxes_is_error(tmp_path):
     root = _make_dataset(tmp_path, {"train/a": "", "train/b": "\n", "val/c": "0 0.5 0.5 0.2 0.2\n"})
     errors, _ = check_dataset(root)
     assert any("train" in e and "chưa có khung" in e for e in errors)
+
+
+# ---------- Đợt sửa điểm nhỏ ----------
+
+def test_accepts_all_ultralytics_image_formats(tmp_path):
+    root = _make_dataset(tmp_path, {"train/a": "0 0.5 0.5 0.2 0.2\n", "val/b": "0 0.5 0.5 0.2 0.2\n"})
+    Image.new("RGB", (64, 64)).save(root / "images" / "train" / "c.TIFF")
+    (root / "labels" / "train" / "c.txt").write_text("0 0.5 0.5 0.2 0.2\n")
+    errors, warnings = check_dataset(root)
+    assert errors == [] and warnings == []
+
+
+def test_polygon_labels_are_accepted_but_checked(tmp_path):
+    root = _make_dataset(tmp_path, {
+        "train/a": "0 0.1 0.1 0.5 0.1 0.3 0.6\n",  # polygon 3 đỉnh: hợp lệ
+        "train/b": "0 0.1 0.1 0.5 0.1 0.3\n",  # số tọa độ lẻ: sai
+        "val/c": "1 0.1 0.1 0.5 0.1 1.3 0.6\n",  # tọa độ > 1: sai
+    })
+    errors, _ = check_dataset(root)
+    assert not any("a.txt" in e for e in errors)
+    assert any("b.txt" in e for e in errors) and any("c.txt" in e and "0..1" in e for e in errors)
+
+
+def test_follows_paths_in_data_yaml_roboflow_layout(tmp_path):
+    # Roboflow xuất dạng train/images, valid/images và data.yaml ghi "../train/images"
+    for split in ("train", "valid"):
+        (tmp_path / split / "images").mkdir(parents=True)
+        (tmp_path / split / "labels").mkdir(parents=True)
+        Image.new("RGB", (64, 64)).save(tmp_path / split / "images" / "x.jpg")
+        (tmp_path / split / "labels" / "x.txt").write_text("0 0.5 0.5 0.2 0.2\n")
+    (tmp_path / "data.yaml").write_text("train: ../train/images\nval: ../valid/images\nnc: 1\nnames: ['oc_vit']\n")
+    errors, warnings = check_dataset(tmp_path)
+    assert errors == [] and warnings == []
+
+
+def test_nc_must_match_names(tmp_path):
+    root = _make_dataset(tmp_path, {"train/a": "0 0.5 0.5 0.2 0.2\n", "val/b": "0 0.5 0.5 0.2 0.2\n"})
+    (root / "data.yaml").write_text((root / "data.yaml").read_text() + "nc: 5\n")
+    errors, _ = check_dataset(root)
+    assert any("nc" in e for e in errors)
+
+
+def test_bad_yaml_and_non_utf8_label_are_errors_not_crashes(tmp_path):
+    root = _make_dataset(tmp_path, {"train/a": "0 0.5 0.5 0.2 0.2\n", "val/b": "0 0.5 0.5 0.2 0.2\n"})
+    (root / "labels" / "train" / "a.txt").write_bytes(b"0 0.5 0.5 0.2 0.2 \xff\xfe\n")
+    errors, _ = check_dataset(root)
+    assert any("a.txt" in e and "UTF-8" in e for e in errors)
+    (root / "data.yaml").write_text("names: [oc_vit\ntrain: images/train\n")
+    errors, _ = check_dataset(root)
+    assert any("data.yaml" in e and "đọc" in e for e in errors)
+
+
+def test_colab_notebook_handles_any_image_and_upload_name():
+    nb = json.loads((ROOT / "training" / "train_colab.ipynb").read_text(encoding="utf-8"))
+    code = "\n".join("".join(c["source"]) for c in nb["cells"] if c["cell_type"] == "code")
+    assert "next(iter(uploaded))" in code  # không cứng tên dataset.zip
+    assert "IMG_FORMATS" in code and ".plot()" in code  # bỏ qua .DS_Store, không phụ thuộc đuôi ảnh
+    # Không ghép đường dẫn ảnh kết quả từ save_dir + tên ảnh gốc (Ultralytics luôn lưu thành .jpg)
+    assert "save_dir" not in code

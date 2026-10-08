@@ -9,6 +9,7 @@ Thư mục này có sẵn:
 | `data.yaml` | Mẫu file khai báo bộ dữ liệu (đường dẫn + tên các loại) |
 | `check_dataset.py` | Kiểm tra bộ dữ liệu có lỗi không, **trước khi** mất công train |
 | `train_colab.ipynb` | Notebook train trên Google Colab (GPU miễn phí) |
+| `_build_notebook.py` | Script tạo lại notebook (muốn sửa notebook thì sửa file này rồi chạy) |
 
 Các bước dưới đây làm theo thứ tự.
 
@@ -44,9 +45,13 @@ class_id  x_tâm  y_tâm  chiều_rộng  chiều_cao
 
 Các số tọa độ đã được chia cho chiều rộng/cao ảnh, nên luôn nằm trong khoảng 0..1. `class_id` đánh số từ 0 theo thứ tự trong `names`.
 
+Nếu công cụ xuất nhãn dạng **polygon** (`class x1 y1 x2 y2 x3 y3 ...`) thì cũng dùng được: Ultralytics tự đổi thành khung.
+
 ## Bước 3: Sắp xếp thư mục
 
 Chia khoảng **80% ảnh để train** (học) và **20% để val** (kiểm tra). Ảnh val phải là ảnh model **chưa từng thấy** khi học.
+
+> Nếu xuất từ **Roboflow**, bộ dữ liệu có sẵn cấu trúc `train/images`, `valid/images` và `data.yaml` ghi `train: ../train/images`. Có thể dùng luôn, không cần xếp lại; `check_dataset.py` đọc đúng đường dẫn trong `data.yaml`.
 
 ```
 dataset/
@@ -79,16 +84,17 @@ python training/check_dataset.py duong_dan/toi/dataset
 
 Script sẽ báo:
 - ❌ **Lỗi** (phải sửa): file nhãn sai định dạng, `class_id` không có trong `names`, tọa độ ngoài 0..1, file nhãn không có ảnh, thư mục train/val trống, thiếu `data.yaml`.
+- ❌ Lỗi còn gồm: thư mục nhãn trống, tập train không có khung nào, `nc` khác số tên trong `names`, file không đọc được (YAML sai cú pháp, nhãn không phải UTF-8).
 - ⚠️ **Cảnh báo** (nên xem): ảnh không có file nhãn (sẽ được coi là ảnh nền), có dòng `path` tương đối.
 
 Chạy lại tới khi thấy `✅ Không có lỗi`.
 
 ## Bước 5: Train trên Google Colab
 
-1. Nén thư mục `dataset/` thành `dataset.zip`. Trên Mac: chuột phải vào thư mục, chọn **Compress**.
+1. Nén thư mục `dataset/` thành file .zip. Trên Mac: chuột phải vào thư mục, chọn **Compress**.
 2. Vào https://colab.research.google.com, chọn **File → Upload notebook**, rồi chọn `training/train_colab.ipynb`.
 3. Bật GPU: **Runtime → Change runtime type → T4 GPU → Save**.
-4. Chạy lần lượt từng ô từ trên xuống. Ô "Tải bộ dữ liệu lên" sẽ hỏi file, chọn `dataset.zip`.
+4. Chạy lần lượt từng ô từ trên xuống. Ô "Tải bộ dữ liệu lên" sẽ hỏi file, chọn file .zip vừa tạo.
 5. Train vài trăm ảnh trên GPU T4 thường mất **15-40 phút**. Đừng đóng tab trong lúc chạy; bản miễn phí có thể bị ngắt nếu để quá lâu không dùng.
 
 ## Bước 6: Đọc kết quả
