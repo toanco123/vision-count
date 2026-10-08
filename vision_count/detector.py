@@ -130,6 +130,7 @@ class ObjectDetector:
         image: ImageInput,
         confidence: float = config.DEFAULT_CONFIDENCE,
         classes: list[str] | None = None,
+        tiled: bool = False,
     ) -> DetectionResult:
         """Phát hiện vật thể trong ảnh.
 
@@ -137,6 +138,7 @@ class ObjectDetector:
             image: ảnh đầu vào (đường dẫn, bytes, ảnh PIL hoặc mảng numpy).
             confidence: ngưỡng độ tin cậy 0..1. Khung thấp hơn ngưỡng sẽ bị bỏ.
             classes: chỉ đếm các loại này (vd ["person", "car"]). None = đếm tất cả.
+            tiled: chế độ vật nhỏ, chia ảnh thành ô 640px (chậm hơn).
         """
         if not 0.0 <= confidence <= 1.0:
             raise ValueError("Ngưỡng độ tin cậy phải nằm trong khoảng 0 đến 1.")
@@ -144,9 +146,43 @@ class ObjectDetector:
         pil_image = load_image(image)
         class_ids = self._class_names_to_ids(classes) if classes else None
 
-        # Chạy model. verbose=False để không in log ra màn hình mỗi lần.
+        if tiled:
+            from vision_count.tiling import make_tiles, merge_overlaps  # import ở đây để tránh import vòng
+
+            tiles = make_tiles(pil_image.width, pil_image.height, config.DEFAULT_IMAGE_SIZE, config.TILE_OVERLAP)
+            # Nhận diện cả ảnh (bắt vật to) rồi từng ô (bắt vật nhỏ), cuối cùng gộp khung trùng
+            detections = self._predict(pil_image, confidence, class_ids)
+            if len(tiles) > 1:
+                for x1, y1, x2, y2 in tiles:
+                    detections += self._predict(pil_image.crop((x1, y1, x2, y2)), confidence, class_ids, x1, y1)
+                detections = merge_overlaps(detections)
+        else:
+            detections = self._predict(pil_image, confidence, class_ids)
+
+        # Sắp xếp khung theo độ tin cậy giảm dần
+        detections.sort(key=lambda d: d.confidence, reverse=True)
+        # Đếm số lượng theo từng loại, loại nhiều nhất đứng đầu
+        counts = dict(Counter(d.label for d in detections).most_common())
+
+        return DetectionResult(
+            detections=detections,
+            counts=counts,
+            image_width=pil_image.width,
+            image_height=pil_image.height,
+        )
+
+    def _predict(
+        self,
+        image: Image.Image,
+        confidence: float,
+        class_ids: list[int] | None,
+        offset_x: float = 0,
+        offset_y: float = 0,
+    ) -> list[Detection]:
+        """Chạy model trên một ảnh; cộng offset để đổi tọa độ trong ô về tọa độ ảnh gốc."""
+        # verbose=False để không in log ra màn hình mỗi lần.
         results = self.model.predict(
-            source=pil_image,
+            source=image,
             conf=confidence,
             classes=class_ids,
             imgsz=config.DEFAULT_IMAGE_SIZE,
@@ -161,26 +197,21 @@ class ObjectDetector:
             boxes.xyxy.cpu().numpy(), boxes.conf.cpu().numpy(), boxes.cls.cpu().numpy()
         ):
             class_id = int(cls)
+            x1, y1, x2, y2 = (float(v) for v in xyxy)
             detections.append(
                 Detection(
                     label=self.model.names[class_id],
                     class_id=class_id,
                     confidence=round(float(conf), 4),
-                    box=tuple(round(float(v), 1) for v in xyxy),
+                    box=(
+                        round(x1 + offset_x, 1),
+                        round(y1 + offset_y, 1),
+                        round(x2 + offset_x, 1),
+                        round(y2 + offset_y, 1),
+                    ),
                 )
             )
-
-        # Sắp xếp khung theo độ tin cậy giảm dần
-        detections.sort(key=lambda d: d.confidence, reverse=True)
-        # Đếm số lượng theo từng loại, loại nhiều nhất đứng đầu
-        counts = dict(Counter(d.label for d in detections).most_common())
-
-        return DetectionResult(
-            detections=detections,
-            counts=counts,
-            image_width=pil_image.width,
-            image_height=pil_image.height,
-        )
+        return detections
 
     def _class_names_to_ids(self, names: list[str]) -> list[int]:
         """Đổi tên loại vật ('person') sang mã số (0) mà YOLO cần."""

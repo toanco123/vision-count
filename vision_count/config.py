@@ -28,3 +28,6 @@ AVAILABLE_MODELS = {
     "small": ("Small: chính xác hơn, chậm hơn", "yolo11s.pt"),
 }
 DEFAULT_MODEL_KEY = "nano"
+
+# Chế độ vật nhỏ: các ô cạnh nhau chồng lên nhau 20% để vật nằm ở mép ô không bị bỏ sót
+TILE_OVERLAP = 0.2
