@@ -7,3 +7,5 @@ __pycache__/
 models/*.pt
 runs/
 .superpowers/
+# Lịch sử đếm trên máy
+data/

@@ -31,3 +31,6 @@ DEFAULT_MODEL_KEY = "nano"
 
 # Chế độ vật nhỏ: các ô cạnh nhau chồng lên nhau 20% để vật nằm ở mép ô không bị bỏ sót
 TILE_OVERLAP = 0.2
+
+# File SQLite lưu lịch sử đếm (chỉ số liệu, không lưu ảnh). Không đưa lên git.
+HISTORY_DB = PROJECT_ROOT / "data" / "history.db"

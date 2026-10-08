@@ -24,6 +24,7 @@ from vision_count.drawing import (
     draw_region,
 )
 from vision_count.export import export_result
+from vision_count.history import HistoryEntry, HistoryStore
 from vision_count.labels_vi import display_label, vi_label
 from vision_count.region import Region, filter_by_region, normalize_region
 from vision_count.registry import get_detector, is_model_downloaded
@@ -36,6 +37,8 @@ __all__ = [
     "BatchItem",
     "Detection",
     "DetectionResult",
+    "HistoryEntry",
+    "HistoryStore",
     "InvalidImageError",
     "ObjectDetector",
     "Region",
